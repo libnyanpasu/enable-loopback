@@ -12,7 +12,14 @@
     "save": "儲存變更"
   },
   "status": {
-    "ready": "就緒"
+    "ready": "就緒",
+    "dirty": "按一下「儲存變更」以提交。",
+    "exempt_all": "所有 AppContainer 待豁免。按一下「儲存變更」以提交。",
+    "exempt_none": "所有 AppContainer 待移除豁免。按一下「儲存變更」以提交。",
+    "orphan_removal": "儲存將移除 %{count} 筆孤立記錄。",
+    "saved": "回環豁免設定已更新。",
+    "not_saved_admin": "尚未儲存。需要系統管理員權限。",
+    "not_saved": "尚未儲存。"
   },
   "runtime": {
     "title": "需要 Windows App Runtime",
@@ -26,5 +33,14 @@
     "missing_name": "必須指定部分名稱，以 * 比對全部。",
     "missing_language": "請在 --lang 後指定語言代碼。",
     "not_implemented": "此命令尚未實作：%{command}"
+  },
+  "placeholder": {
+    "display_name": "(無顯示名稱)",
+    "description": "(無描述)",
+    "package": "(無套件名稱)",
+    "name": "(無 AC 名稱)",
+    "sid": "(無 AC SID)",
+    "users": "(無使用者 SID)",
+    "binaries": "(無)"
   }
 }

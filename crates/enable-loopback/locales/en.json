@@ -12,7 +12,14 @@
     "save": "Save changes"
   },
   "status": {
-    "ready": "Ready"
+    "ready": "Ready",
+    "dirty": "Click Save changes to commit.",
+    "exempt_all": "All AppContainers are pending exemption. Click Save changes to commit.",
+    "exempt_none": "All AppContainers are pending exemption removal. Click Save changes to commit.",
+    "orphan_removal": "Saving will remove %{count} orphaned records.",
+    "saved": "Loopback exemption configuration updated.",
+    "not_saved_admin": "Changes not saved. Administrator privileges are required.",
+    "not_saved": "Changes not saved."
   },
   "runtime": {
     "title": "Windows App Runtime required",
@@ -26,5 +33,14 @@
     "missing_name": "Specify part of a name. Use * to match all.",
     "missing_language": "Specify a language code after --lang.",
     "not_implemented": "This command is not implemented yet: %{command}"
+  },
+  "placeholder": {
+    "display_name": "(No DisplayName)",
+    "description": "(No Description)",
+    "package": "(No Package Name)",
+    "name": "(No AC Name)",
+    "sid": "(No AC SID)",
+    "users": "(No User SID)",
+    "binaries": "(None)"
   }
 }

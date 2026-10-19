@@ -12,7 +12,14 @@
     "save": "保存修改"
   },
   "status": {
-    "ready": "就绪"
+    "ready": "就绪",
+    "dirty": "点击“保存修改”以提交。",
+    "exempt_all": "所有 AppContainer 待豁免。点击“保存修改”以提交。",
+    "exempt_none": "所有 AppContainer 待移除豁免。点击“保存修改”以提交。",
+    "orphan_removal": "保存将移除 %{count} 条孤立记录。",
+    "saved": "回环豁免配置已更新。",
+    "not_saved_admin": "未保存。需要管理员权限。",
+    "not_saved": "未保存。"
   },
   "runtime": {
     "title": "需要 Windows App Runtime",
@@ -26,5 +33,14 @@
     "missing_name": "必须指定部分名称，用 * 匹配全部。",
     "missing_language": "请在 --lang 后指定语言代码。",
     "not_implemented": "此命令尚未实现：%{command}"
+  },
+  "placeholder": {
+    "display_name": "(无显示名称)",
+    "description": "(无描述)",
+    "package": "(无包名称)",
+    "name": "(无 AC 名称)",
+    "sid": "(无 AC SID)",
+    "users": "(无用户 SID)",
+    "binaries": "(无)"
   }
 }

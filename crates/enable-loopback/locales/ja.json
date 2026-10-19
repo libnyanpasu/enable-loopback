@@ -12,7 +12,14 @@
     "save": "変更を保存"
   },
   "status": {
-    "ready": "準備完了"
+    "ready": "準備完了",
+    "dirty": "「変更を保存」をクリックして適用してください。",
+    "exempt_all": "すべての AppContainer を除外する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_none": "すべての AppContainer の除外を解除する予定です。「変更を保存」をクリックして適用してください。",
+    "orphan_removal": "保存すると %{count} 件の孤立したレコードが削除されます。",
+    "saved": "ループバック除外設定を更新しました。",
+    "not_saved_admin": "保存されていません。管理者権限が必要です。",
+    "not_saved": "保存されていません。"
   },
   "runtime": {
     "title": "Windows App Runtime が必要です",
@@ -26,5 +33,14 @@
     "missing_name": "名前の一部を指定してください。* はすべてに一致します。",
     "missing_language": "--lang の後に言語コードを指定してください。",
     "not_implemented": "このコマンドは未実装です：%{command}"
+  },
+  "placeholder": {
+    "display_name": "(表示名なし)",
+    "description": "(説明なし)",
+    "package": "(パッケージ名なし)",
+    "name": "(AC 名なし)",
+    "sid": "(AC SID なし)",
+    "users": "(ユーザー SID なし)",
+    "binaries": "(なし)"
   }
 }

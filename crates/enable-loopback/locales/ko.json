@@ -12,7 +12,14 @@
     "save": "변경 내용 저장"
   },
   "status": {
-    "ready": "준비됨"
+    "ready": "준비됨",
+    "dirty": "적용하려면 “변경 사항 저장”을 클릭하세요.",
+    "exempt_all": "모든 AppContainer가 예외로 설정될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
+    "exempt_none": "모든 AppContainer의 예외가 해제될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
+    "orphan_removal": "저장하면 연결된 앱이 없는 레코드 %{count}개가 제거됩니다.",
+    "saved": "루프백 예외 설정이 업데이트되었습니다.",
+    "not_saved_admin": "저장하지 못했습니다. 관리자 권한이 필요합니다.",
+    "not_saved": "저장하지 못했습니다."
   },
   "runtime": {
     "title": "Windows App Runtime 필요",
@@ -26,5 +33,14 @@
     "missing_name": "이름의 일부를 지정하세요. *는 모두 일치합니다.",
     "missing_language": "--lang 뒤에 언어 코드를 지정하세요.",
     "not_implemented": "아직 구현되지 않은 명령입니다: %{command}"
+  },
+  "placeholder": {
+    "display_name": "(표시 이름 없음)",
+    "description": "(설명 없음)",
+    "package": "(패키지 이름 없음)",
+    "name": "(AC 이름 없음)",
+    "sid": "(AC SID 없음)",
+    "users": "(사용자 SID 없음)",
+    "binaries": "(없음)"
   }
 }

@@ -3,7 +3,7 @@
 mod args;
 mod cli;
 mod i18n;
-mod model;
+pub mod model;
 pub mod netiso;
 mod runtime_check;
 mod ui;
