@@ -73,7 +73,10 @@
     "error_title": "操作に失敗しました",
     "firewall_title": "Windows ファイアウォールが無効です",
     "firewall_body": "Windows ファイアウォールサービスが実行されていないようです。他社製のセキュリティソフトが無効化または置き換えた可能性があります。そのソフトでループバック通信を許可するか、Windows ファイアウォールを有効にしてください。\n\n%{detail}",
-    "load_failed": "このシステムの AppContainer 一覧を取得できません。\n\n%{detail}"
+    "load_failed": "このシステムの AppContainer 一覧を取得できません。\n\n%{detail}",
+    "admin_title": "変更は保存されませんでした",
+    "admin_body": "AppContainer の構成を変更するには、このツールを管理者として実行してください。",
+    "save_title": "設定の保存に失敗しました"
   },
   "menu": {
     "copy_rows": "選択した行をコピー",

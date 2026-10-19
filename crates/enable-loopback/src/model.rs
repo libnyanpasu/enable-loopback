@@ -35,7 +35,6 @@ pub struct Placeholders {
     pub description: String,
     pub package: String,
     pub name: String,
-    pub sid: String,
     pub users: String,
     pub binaries: String,
 }
@@ -48,7 +47,6 @@ impl Placeholders {
             description: rust_i18n::t!("placeholder.description", locale = locale).into_owned(),
             package: rust_i18n::t!("placeholder.package", locale = locale).into_owned(),
             name: rust_i18n::t!("placeholder.name", locale = locale).into_owned(),
-            sid: rust_i18n::t!("placeholder.sid", locale = locale).into_owned(),
             users: rust_i18n::t!("placeholder.users", locale = locale).into_owned(),
             binaries: rust_i18n::t!("placeholder.binaries", locale = locale).into_owned(),
         }
@@ -161,6 +159,7 @@ pub struct ListState {
     /// Suppresses dirty notifications while refresh replaces rows (§3.3).
     pub refreshing: bool,
     pub loaded: bool,
+    pub saving: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,12 +200,13 @@ impl ListState {
             sort,
             refreshing: false,
             loaded: true,
+            saving: false,
         }
     }
 
     /// Keep UI enablement in the pure model, including the in-flight save snapshot.
-    pub fn availability(&self, saving: bool) -> Availability {
-        let idle = !self.refreshing && !saving;
+    pub fn availability(&self) -> Availability {
+        let idle = !self.refreshing && !self.saving;
         Availability {
             refresh: idle,
             bulk: idle && self.loaded && !self.rows.is_empty(),
@@ -277,6 +277,22 @@ impl ListState {
             .filter(|row| row.checked)
             .map(|row| row.app.sid.clone())
             .collect()
+    }
+
+    /// Freeze edits while the writer owns this exact checked set.
+    pub fn begin_save(&mut self) -> Option<Vec<Sid>> {
+        if !self.availability().save {
+            return None;
+        }
+        self.saving = true;
+        Some(self.checked_sids())
+    }
+
+    pub fn finish_save(&mut self, succeeded: bool) {
+        self.saving = false;
+        if succeeded {
+            self.mark_saved();
+        }
     }
 
     /// Call only after SetAppContainerConfig succeeds. Failure leaves edits retryable.
@@ -412,10 +428,43 @@ mod tests {
     }
 
     #[test]
+    fn save_failure_keeps_edits_retryable_and_success_commits_the_snapshot() {
+        let p = Placeholders::for_locale("en");
+        let first = app(1, None);
+        let second = app(2, None);
+        let orphan = app(9, None).sid;
+        let mut state = ListState::from_apps(
+            vec![first.clone(), second.clone()],
+            &[first.sid.clone(), orphan.clone()],
+            &p,
+        );
+        assert!(state.begin_save().is_none());
+        state.rows[0].checked = false;
+        state.rows[1].checked = true;
+        assert_eq!(
+            state.begin_save().unwrap(),
+            std::slice::from_ref(&second.sid)
+        );
+        assert!(state.begin_save().is_none()); // prevent duplicate writes
+        state.finish_save(false);
+        assert!(state.is_dirty());
+        assert_eq!(state.orphans, [orphan]);
+        assert!(state.rows[0].app.exempt_at_last_check);
+        assert!(!state.rows[1].app.exempt_at_last_check);
+        assert_eq!(state.begin_save().unwrap(), [second.sid]);
+        state.finish_save(true);
+        assert!(!state.is_dirty());
+        assert!(!state.availability().save);
+        assert!(state.orphans.is_empty());
+        assert!(!state.rows[0].app.exempt_at_last_check);
+        assert!(state.rows[1].app.exempt_at_last_check);
+    }
+
+    #[test]
     fn availability_covers_manual_loading_clean_dirty_failed_and_saving() {
         let mut state = ListState::default();
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: true,
                 bulk: false,
@@ -425,7 +474,7 @@ mod tests {
         );
         state.begin_refresh();
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: false,
                 bulk: false,
@@ -435,7 +484,7 @@ mod tests {
         );
         state.replace_apps(vec![app(1, None)], &[], &Placeholders::for_locale("en"));
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: true,
                 bulk: true,
@@ -445,7 +494,7 @@ mod tests {
         );
         state.set_all(true);
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: true,
                 bulk: true,
@@ -453,8 +502,9 @@ mod tests {
                 list: true
             }
         );
+        state.begin_save().unwrap();
         assert_eq!(
-            state.availability(true),
+            state.availability(),
             Availability {
                 refresh: false,
                 bulk: false,
@@ -463,10 +513,11 @@ mod tests {
             }
         );
         assert!(state.is_dirty());
+        state.finish_save(false);
         state.begin_refresh();
         state.refreshing = false; // failed load
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: true,
                 bulk: false,
@@ -476,7 +527,7 @@ mod tests {
         );
         state.replace_apps(vec![], &[], &Placeholders::for_locale("en"));
         assert_eq!(
-            state.availability(false),
+            state.availability(),
             Availability {
                 refresh: true,
                 bulk: false,

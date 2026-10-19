@@ -109,6 +109,8 @@ enum Message {
     Focus(Option<usize>),
     ListKey(KeyEventInfo),
     Copy(bool),
+    Save,
+    Saved(Result<(), netiso::Error>),
 }
 
 fn load(registry: bool, force: bool) -> Result<Loaded, netiso::Error> {
@@ -293,7 +295,7 @@ impl Component for MainWindow {
             Message::WindowPrepared(Err(error)) => crate::debug(&error.to_string()),
             Message::WindowPrepared(Ok(hwnd)) => self.hwnd = hwnd,
             Message::BeginRefresh(force) => self.refresh(force, cx),
-            Message::Refresh if self.list.availability(false).refresh && !self.dialog_open => {
+            Message::Refresh if self.list.availability().refresh && !self.dialog_open => {
                 if self.list.is_dirty() {
                     self.enqueue(Dialog::Refresh);
                 } else {
@@ -393,7 +395,7 @@ impl Component for MainWindow {
                     }
                 }
             }
-            Message::ListKey(event) if self.list.availability(false).list => {
+            Message::ListKey(event) if self.list.availability().list => {
                 let ctrl = event.modifiers.contains(InputModifiers::CONTROL);
                 if ctrl && event.key == VirtualKey::A {
                     self.selection.select_all(&self.order());
@@ -420,13 +422,38 @@ impl Component for MainWindow {
                 }
             }
             Message::Copy(column) => self.copy(column),
-            Message::Checked(sid, checked) if self.list.availability(false).list => {
+            Message::Save if !self.dialog_open => {
+                if let Some(sids) = self.list.begin_save() {
+                    cx.spawn_background(move |_| Message::Saved(netiso::set_exempted(&sids)));
+                }
+            }
+            Message::Saved(result) => {
+                self.list.finish_save(result.is_ok());
+                match result {
+                    Ok(()) => self.status = rust_i18n::t!("status.saved").into_owned(),
+                    Err(netiso::Error::SetExemptionsAccessDenied { .. }) => {
+                        self.status = rust_i18n::t!("status.not_saved_admin").into_owned();
+                        self.enqueue(Dialog::Error {
+                            title: rust_i18n::t!("dialog.admin_title").into_owned(),
+                            body: rust_i18n::t!("dialog.admin_body").into_owned(),
+                        });
+                    }
+                    Err(error) => {
+                        self.status = rust_i18n::t!("status.not_saved").into_owned();
+                        self.enqueue(Dialog::Error {
+                            title: rust_i18n::t!("dialog.save_title").into_owned(),
+                            body: error.to_string(),
+                        });
+                    }
+                }
+            }
+            Message::Checked(sid, checked) if self.list.availability().list => {
                 if let Some(row) = self.list.rows.iter_mut().find(|row| row.app.sid == sid) {
                     row.checked = checked;
                 }
                 self.change_status(self.list.status_after_change(Change::Checked));
             }
-            Message::SetAll(checked) if self.list.availability(false).bulk => {
+            Message::SetAll(checked) if self.list.availability().bulk => {
                 let status = self.list.set_all(checked);
                 self.change_status(status);
             }
@@ -470,7 +497,7 @@ impl Component for MainWindow {
                 }),
         );
         cx.on_window_size(cx.callback(Message::Size));
-        let available = self.list.availability(false);
+        let available = self.list.availability();
         let mut status: Vec<View> = Vec::new();
         if self.list.refreshing {
             status.push(
@@ -526,7 +553,8 @@ impl Component for MainWindow {
                                 .automation_id("save")
                                 .label(rust_i18n::t!("toolbar.save"))
                                 .icon(Symbol::Save)
-                                .is_enabled(false),
+                                .is_enabled(available.save)
+                                .on_click(cx.callback(|()| Message::Save)),
                         )),
                         TextBlock::new()
                             .grid_column(1)

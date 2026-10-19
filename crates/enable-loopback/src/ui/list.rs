@@ -27,7 +27,7 @@ fn columns() -> [GridLength; 8] {
 }
 
 pub(super) fn view(window: &MainWindow, cx: &ViewContext<MainWindow>) -> View {
-    let enabled = window.list.availability(false).list;
+    let enabled = window.list.availability().list;
     let mut headers: Vec<View> = vec![Border::new().into()];
     for (column, key) in COLUMNS {
         let arrow = if window.list.sort.column == column {

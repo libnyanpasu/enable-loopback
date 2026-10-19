@@ -1,11 +1,11 @@
 //! Select language and dispatch CLI or GUI startup (§1.2/§3.1), checking runtime only for GUI.
 
-pub mod args;
+mod args;
 mod cli;
 mod i18n;
-pub mod instance;
-pub mod model;
-pub mod netiso;
+mod instance;
+mod model;
+mod netiso;
 mod runtime_check;
 mod ui;
 
