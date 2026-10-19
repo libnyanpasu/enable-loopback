@@ -1,5 +1,8 @@
 //! Pure rows, rendering, sorting, copy formats, save baselines and CLI filters (§3).
 
+mod selection;
+pub use selection::{Direction, Modifiers, PointerButton, Selection};
+
 use crate::{
     args::Command,
     netiso::{AppContainer, Sid},
