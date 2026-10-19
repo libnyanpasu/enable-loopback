@@ -16,7 +16,7 @@ rust-i18n = "4"
 snafu = "0.8"
 sys-locale = "0.3"
 windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b" }
-windows = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv", "synchapi", "memoryapi", "handleapi", "processthreadsapi", "datetimeapi"] }
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv", "synchapi", "memoryapi", "handleapi", "processthreadsapi", "datetimeapi", "sysinfoapi", "uiautomationclient", "uiautomationcore", "combaseapi", "objbase", "wtypesbase", "wtypes", "oaidl", "oleauto"] }
 
 [build-dependencies]
 resvg = { version = "0.45", default-features = false }
@@ -24,4 +24,5 @@ ico = "0.5"
 embed-resource = "3"
 
 [dev-dependencies]
+windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["test"] }
 serde_json = "1"

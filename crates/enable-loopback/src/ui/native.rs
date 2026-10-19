@@ -186,3 +186,258 @@ pub(super) fn context_menu(hwnd: usize) -> Result<Option<MenuCommand>, Error> {
         _ => None,
     })
 }
+
+/// All four flags are shared only by UI-thread code. Rc makes accidental Send impossible.
+#[derive(Clone, Default)]
+pub(super) struct CloseState {
+    pub dirty: std::rc::Rc<std::cell::Cell<bool>>,
+    pub saving: std::rc::Rc<std::cell::Cell<bool>>,
+    pub confirmed: std::rc::Rc<std::cell::Cell<bool>>,
+    pub requested: std::rc::Rc<std::cell::Cell<bool>>,
+}
+
+struct CloseSubclass {
+    state: CloseState,
+    sender: windows_reactor::LocalSender<super::Message>,
+}
+const CLOSE_SUBCLASS_ID: usize = 1;
+
+pub(super) fn install_close(
+    window: &windows_reactor::WindowHandle<'_>,
+    state: CloseState,
+    sender: windows_reactor::LocalSender<super::Message>,
+) -> Result<(), Error> {
+    use windows::Win32::commctrl::SetWindowSubclass;
+    let data = Box::into_raw(Box::new(CloseSubclass { state, sender }));
+    // SAFETY: run_window provides a live HWND on its UI thread. The box contains only
+    // UI-thread state and is owned by this subclass until WM_NCDESTROY. It is never global.
+    if !unsafe {
+        SetWindowSubclass(
+            window.as_raw().cast(),
+            Some(close_proc),
+            CLOSE_SUBCLASS_ID,
+            data as usize,
+        )
+    }
+    .as_bool()
+    {
+        let error = failure("SetWindowSubclass");
+        // SAFETY: installation failed, so native code never took ownership of the box.
+        unsafe {
+            drop(Box::from_raw(data));
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+unsafe extern "system" fn close_proc(
+    hwnd: windows::Win32::HWND,
+    message: u32,
+    wparam: usize,
+    lparam: isize,
+    id: usize,
+    data: usize,
+) -> isize {
+    use windows::Win32::{
+        commctrl::{DefSubclassProc, RemoveWindowSubclass},
+        winuser::{WM_CLOSE, WM_NCDESTROY},
+    };
+    if message == WM_NCDESTROY as u32 {
+        // SAFETY: data is our unique live box. Remove the callback before releasing it;
+        // subsequent destruction messages cannot access the freed UI-thread Rc values.
+        unsafe {
+            let _ = RemoveWindowSubclass(hwnd, Some(close_proc), id);
+            drop(Box::from_raw(data as *mut CloseSubclass));
+            return DefSubclassProc(hwnd, message, wparam, lparam);
+        }
+    }
+    // SAFETY: successful installation retains this box until WM_NCDESTROY on this thread.
+    let subclass = unsafe { &*(data as *const CloseSubclass) };
+    if message == WM_CLOSE as u32 && !subclass.state.confirmed.get() {
+        if subclass.state.saving.get() {
+            return 0;
+        }
+        if subclass.state.dirty.get() {
+            if !subclass.state.requested.replace(true)
+                && !subclass.sender.send(super::Message::CloseRequested)
+            {
+                subclass.state.requested.set(false);
+            }
+            return 0;
+        }
+    }
+    // SAFETY: all unconsumed messages retain their original parameters and subclass chain.
+    unsafe { DefSubclassProc(hwnd, message, wparam, lparam) }
+}
+
+pub(super) fn version() -> Result<String, Error> {
+    use windows::Win32::{sysinfoapi::GetVersionExW, winnt::OSVERSIONINFOW};
+    let mut version = OSVERSIONINFOW {
+        dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
+        ..Default::default()
+    };
+    // SAFETY: writable version structure has its required size field set. The executable's
+    // supportedOS Windows 10 manifest enables the real Windows 10/11 version and build.
+    if !unsafe { GetVersionExW(&mut version) }.as_bool() {
+        return Err(failure("GetVersionExW"));
+    }
+    Ok(format!(
+        "enable-loopback v{} {} Windows {}.{}.{}",
+        env!("CARGO_PKG_VERSION"),
+        if cfg!(target_arch = "aarch64") {
+            "arm64"
+        } else {
+            "64bit"
+        },
+        version.dwMajorVersion,
+        version.dwMinorVersion,
+        version.dwBuildNumber
+    ))
+}
+
+pub(super) fn open_help(hwnd: usize, url: &str) -> Result<(), Error> {
+    use windows::{
+        Win32::{
+            shellapi::{SE_ERR_DLLNOTFOUND, ShellExecuteW},
+            winuser::SW_SHOWNORMAL,
+        },
+        core::HSTRING,
+    };
+    let action = HSTRING::from("open");
+    let url = HSTRING::from(url);
+    // SAFETY: live UI-thread HWND, terminated verb and fixed URL, no parameters/directory.
+    let result = unsafe {
+        ShellExecuteW(
+            Some(hwnd as _),
+            &action,
+            &url,
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    // ShellExecuteW's documented error range ends at SE_ERR_DLLNOTFOUND (shellapi.h).
+    if result <= SE_ERR_DLLNOTFOUND as isize {
+        return Err(Error::OpenHelp {
+            code: result as usize,
+        });
+    }
+    Ok(())
+}
+
+/// Reveal a virtualized native ListView item. Reactor has no ListView reference or
+/// ScrollIntoView API at a29e064. UIA runs in an MTA worker, never on our UI thread:
+/// https://learn.microsoft.com/windows/win32/winauto/uiauto-threading
+/// No COM interface or allocation escapes this worker's apartment.
+pub(super) fn reveal(
+    hwnd: usize,
+    index: usize,
+    token: &windows_reactor::CancellationToken,
+) -> Result<(), Error> {
+    use std::mem::ManuallyDrop;
+    use windows::{
+        Win32::{
+            combaseapi::{CoCreateInstance, CoInitializeEx, CoUninitialize},
+            oaidl::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0},
+            objbase::COINIT_MULTITHREADED,
+            oleauto::VariantClear,
+            uiautomationclient::{
+                CUIAutomation, IUIAutomation, IUIAutomationElement,
+                IUIAutomationItemContainerPattern, IUIAutomationScrollItemPattern,
+                IUIAutomationVirtualizedItemPattern, TreeScope_Descendants,
+            },
+            wtypes::VT_BSTR,
+            wtypesbase::CLSCTX_INPROC_SERVER,
+        },
+        core::BSTR,
+    };
+    // UIAutomationClient.h identifiers; the pinned windows bindings omit these constants.
+    const AUTOMATION_ID_PROPERTY: i32 = 30011;
+    const ITEM_CONTAINER_PATTERN: i32 = 10019;
+    const VIRTUALIZED_ITEM_PATTERN: i32 = 10020;
+    const SCROLL_ITEM_PATTERN: i32 = 10017;
+    // FindItemByProperty: propertyId zero requests the next item regardless of value.
+    const NEXT_ITEM_PROPERTY: i32 = 0;
+    struct Apartment;
+    impl Drop for Apartment {
+        fn drop(&mut self) {
+            // SAFETY: this guard is created only after a successful CoInitializeEx.
+            unsafe {
+                CoUninitialize();
+            }
+        }
+    }
+    struct Variant(VARIANT);
+    impl Drop for Variant {
+        fn drop(&mut self) {
+            // SAFETY: this guard owns the VT_BSTR allocation, freed exactly once.
+            unsafe {
+                let _ = VariantClear(&mut self.0);
+            }
+        }
+    }
+    let work = || -> windows::core::Result<()> {
+        // SAFETY: reactor background workers do not own UI objects; initialize this call's
+        // COM apartment and balance successful S_OK/S_FALSE returns on the same thread.
+        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED as u32) }.ok()?;
+        let _apartment = Apartment;
+        // SAFETY: documented UIA COM class, no aggregation, in-process activation.
+        let automation: IUIAutomation =
+            unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }?;
+        let value = Variant(VARIANT {
+            Anonymous: VARIANT_0 {
+                Anonymous: ManuallyDrop::new(VARIANT_0_0 {
+                    vt: VT_BSTR as u16,
+                    Anonymous: VARIANT_0_0_0 {
+                        bstrVal: ManuallyDrop::new(BSTR::from("apps")),
+                    },
+                    ..Default::default()
+                }),
+            },
+        });
+        // SAFETY: hwnd belongs to this window; UIA validates destroyed/invalid handles.
+        // The property condition copies its VARIANT; the guard keeps the BSTR live here.
+        let root = unsafe { automation.ElementFromHandle(hwnd as _) }?;
+        let condition =
+            unsafe { automation.CreatePropertyCondition(AUTOMATION_ID_PROPERTY, &value.0) }?;
+        let list = unsafe { root.FindFirst(TreeScope_Descendants, &condition) }?;
+        let items: IUIAutomationItemContainerPattern =
+            unsafe { list.GetCurrentPatternAs(ITEM_CONTAINER_PATTERN) }?;
+        let mut item: Option<IUIAutomationElement> = None;
+        for _ in 0..=index {
+            if token.is_cancelled() {
+                return Ok(());
+            }
+            // SAFETY: UIA COM interfaces stay in this MTA; an empty VARIANT is ignored
+            // when propertyId is zero. Each returned item is kept alive for the next call.
+            item = Some(unsafe {
+                items.FindItemByProperty(item.as_ref(), NEXT_ITEM_PROPERTY, &VARIANT::default())
+            }?);
+        }
+        let item = item.expect("inclusive index range produces an item");
+        if token.is_cancelled() {
+            return Ok(());
+        }
+        // SAFETY: VirtualizedItem may be absent for an already realized container.
+        if let Ok(virtualized) = unsafe {
+            item.GetCurrentPatternAs::<IUIAutomationVirtualizedItemPattern>(
+                VIRTUALIZED_ITEM_PATTERN,
+            )
+        } {
+            unsafe { virtualized.Realize() }.ok()?;
+        }
+        if token.is_cancelled() {
+            return Ok(());
+        }
+        // SAFETY: the realized item supplies ScrollItem; the UI thread remains free to
+        // service the provider. Focus is requested via reactor after this worker completes.
+        let scroll: IUIAutomationScrollItemPattern =
+            unsafe { item.GetCurrentPatternAs(SCROLL_ITEM_PATTERN) }?;
+        unsafe { scroll.ScrollIntoView() }.ok()
+    };
+    work().map_err(|source| Error::Native {
+        operation: "ListView ScrollIntoView",
+        source,
+    })
+}

@@ -3,6 +3,8 @@ mod dialogs;
 mod keys;
 mod list;
 mod native;
+#[cfg(test)]
+mod tests;
 
 use crate::{
     args::GuiOptions,
@@ -46,6 +48,8 @@ pub enum Error {
         size: i32,
         source: windows::core::Error,
     },
+    #[snafu(display("ShellExecuteW failed: 0x{code:x}"))]
+    OpenHelp { code: usize },
     #[snafu(display("{operation} failed: {source}"))]
     Native {
         operation: &'static str,
@@ -64,12 +68,20 @@ struct MainWindow {
     dialogs: VecDeque<Dialog>,
     keep_prompting: bool,
     dialog_timer: Option<ComponentTimer>,
+    menu_timer: Option<ComponentTimer>,
+    focus_timer: Option<ComponentTimer>,
+    focus_task: Option<ComponentTask>,
+    list_generation: u64,
+    rebuilding_list: bool,
     table_width: f64,
     list_focus: ElementRef<Border>,
     selection: Selection,
     row_focus: BTreeMap<Sid, ElementRef<Border>>,
     hwnd: usize,
     checkbox_focus: Rc<Cell<bool>>,
+    close: native::CloseState,
+    hovering_help: bool,
+    version: String,
 }
 
 #[derive(Clone)]
@@ -106,11 +118,20 @@ enum Message {
     KeepPrompting(bool),
     Size(WindowSize),
     Pointer(Sid, Column, PointerEventInfo),
+    ContextMenu,
+    MenuFinished(Result<Option<native::MenuCommand>, Error>),
+    RestoreFocus,
+    Reveal(u64, usize),
+    Revealed(u64, usize, Result<(), Error>),
     Focus(Option<usize>),
+    RowFocused(Sid),
     ListKey(KeyEventInfo),
     Copy(bool),
     Save,
     Saved(Result<(), netiso::Error>),
+    CloseRequested,
+    Help,
+    HoverHelp(bool),
 }
 
 fn load(registry: bool, force: bool) -> Result<Loaded, netiso::Error> {
@@ -136,15 +157,34 @@ impl MainWindow {
     fn order(&self) -> Vec<Sid> {
         self.list.rows.iter().map(|r| r.app.sid.clone()).collect()
     }
-    fn focus_row(&self) {
-        if let Some(reference) = self
-            .selection
-            .focused
-            .as_ref()
-            .and_then(|sid| self.row_focus.get(sid))
+    fn focus_row(&self, cx: &ComponentContext<Self>, allow_reveal: bool) {
+        self.checkbox_focus.set(false);
+        if let Some(sid) = &self.selection.focused
+            && let Some(reference) = self.row_focus.get(sid)
+            && let Some(index) = self.order().iter().position(|row| row == sid)
         {
-            let _ = reference.request_focus();
+            let generation = self.list_generation;
+            let sender = cx.sender();
+            let _ = reference.request_focus_result(move |result| {
+                if allow_reveal && !matches!(result, Ok(true)) {
+                    let _ = sender.send(Message::Reveal(generation, index));
+                }
+            });
         }
+    }
+    fn focus_is_current(&self, generation: u64, index: usize) -> bool {
+        generation == self.list_generation
+            && !self.dialog_open
+            && !self.list.refreshing
+            && self.selection.focused.as_ref() == self.list.rows.get(index).map(|row| &row.app.sid)
+    }
+    fn operation_failed(&mut self, error: Error) {
+        let detail = error.to_string();
+        self.status = rust_i18n::t!("status.failed", detail = detail.clone()).into_owned();
+        self.enqueue(Dialog::Error {
+            title: rust_i18n::t!("dialog.error_title").into_owned(),
+            body: detail,
+        });
     }
     fn copy(&mut self, column: bool) {
         let value = if column {
@@ -164,10 +204,7 @@ impl MainWindow {
         if !value.is_empty()
             && let Err(error) = native::clipboard(self.hwnd, &value)
         {
-            self.enqueue(Dialog::Error {
-                title: rust_i18n::t!("dialog.error_title").into_owned(),
-                body: error.to_string(),
-            });
+            self.operation_failed(error);
         }
     }
     fn enqueue(&mut self, dialog: Dialog) {
@@ -198,6 +235,9 @@ impl MainWindow {
         });
     }
     fn refresh(&mut self, force: bool, cx: &ComponentContext<Self>) {
+        if let Some(task) = self.focus_task.take() {
+            task.cancel();
+        }
         self.list.begin_refresh();
         self.status = rust_i18n::t!("status.refreshing").into_owned();
         self.start_load(self.options.registry, force, None, cx);
@@ -257,12 +297,16 @@ impl Component for MainWindow {
     type Input = Startup;
     fn create(input: &Startup, cx: &ComponentContext<Self>) -> Self {
         let publisher = input.publisher.clone();
+        let close = native::CloseState::default();
+        let subclass_state = close.clone();
+        let sender = cx.sender();
         if !cx.run_window(move |window| {
             // SAFETY: run_window supplies this process's live HWND on the UI thread.
             let hwnd = window.as_raw() as usize;
             let result = unsafe { publisher.publish_window(window.as_raw().cast()) }
                 .map_err(|source| Error::PublishWindow { source })
-                .and_then(|()| set_window_icons(window))
+                .and_then(|()| native::install_close(&window, subclass_state, sender))
+                .and_then(|()| set_window_icons(&window))
                 .map(|()| hwnd);
             Message::WindowPrepared(result)
         }) {
@@ -282,17 +326,32 @@ impl Component for MainWindow {
             dialogs: VecDeque::new(),
             keep_prompting: true,
             dialog_timer: None,
+            menu_timer: None,
+            focus_timer: None,
+            focus_task: None,
+            list_generation: 0,
+            rebuilding_list: false,
             table_width: 1240.0,
             list_focus: ElementRef::new(),
             selection: Selection::default(),
             row_focus: BTreeMap::new(),
             hwnd: 0,
             checkbox_focus: Rc::new(Cell::new(false)),
+            close,
+            hovering_help: false,
+            version: native::version().unwrap_or_else(|error| {
+                crate::debug(&error.to_string());
+                format!("enable-loopback v{}", env!("CARGO_PKG_VERSION"))
+            }),
         }
     }
     fn update(&mut self, message: Message, cx: &ComponentContext<Self>) {
         match message {
-            Message::WindowPrepared(Err(error)) => crate::debug(&error.to_string()),
+            Message::WindowPrepared(Err(error)) => {
+                crate::debug(&error.to_string());
+                // Do not allow editing in a window whose native integration failed.
+                let _ = cx.close_window();
+            }
             Message::WindowPrepared(Ok(hwnd)) => self.hwnd = hwnd,
             Message::BeginRefresh(force) => self.refresh(force, cx),
             Message::Refresh if self.list.availability().refresh && !self.dialog_open => {
@@ -317,6 +376,11 @@ impl Component for MainWindow {
                         .into_iter()
                         .map(|sid| (sid, ElementRef::new()))
                         .collect();
+                    self.list_generation += 1;
+                    self.rebuilding_list = true;
+                    self.focus_timer = Some(
+                        cx.set_local_timeout(Duration::from_millis(1), || Message::RestoreFocus),
+                    );
                     self.current_user = loaded.user;
                     match native::time() {
                         Ok(time) => {
@@ -343,14 +407,24 @@ impl Component for MainWindow {
                 Err(error) => self.load_failed(error, fallback_code),
             },
             Message::Sort(column) => {
+                if let Some(task) = self.focus_task.take() {
+                    task.cancel();
+                }
                 self.list.sort_by(column, &self.placeholders);
+                self.list_generation += 1;
+                self.rebuilding_list = true;
+                self.focus_timer =
+                    Some(cx.set_local_timeout(Duration::from_millis(1), || Message::RestoreFocus));
                 let order = self.order();
                 if let Some(index) = self.selection.first_selected_index(&order) {
                     self.selection.focused = Some(order[index].clone());
-                    self.focus_row();
                 }
             }
             Message::Pointer(sid, column, event) => {
+                if let Some(task) = self.focus_task.take() {
+                    task.cancel();
+                }
+                self.checkbox_focus.set(false);
                 let button = if event.is_right_button_pressed {
                     PointerButton::Right
                 } else if event.is_left_button_pressed {
@@ -369,21 +443,67 @@ impl Component for MainWindow {
                     column,
                 );
                 if button == PointerButton::Right {
-                    match native::context_menu(self.hwnd) {
-                        Ok(Some(command)) => {
-                            let _ = cx.sender().send(match command {
-                                native::MenuCommand::CopyRows => Message::Copy(false),
-                                native::MenuCommand::CopyColumn => Message::Copy(true),
-                                native::MenuCommand::ExemptAll => Message::SetAll(true),
-                                native::MenuCommand::ExemptNone => Message::SetAll(false),
-                            });
-                        }
-                        Ok(None) => {}
-                        Err(error) => self.enqueue(Dialog::Error {
-                            title: rust_i18n::t!("dialog.error_title").into_owned(),
-                            body: error.to_string(),
-                        }),
+                    self.menu_timer = Some(
+                        cx.set_local_timeout(Duration::from_millis(1), || Message::ContextMenu),
+                    );
+                }
+            }
+            Message::RestoreFocus => {
+                self.focus_timer = None;
+                self.rebuilding_list = false;
+                if !self.dialog_open {
+                    self.focus_row(cx, true);
+                }
+            }
+            Message::Reveal(generation, index) if self.focus_is_current(generation, index) => {
+                if let Some(task) = self.focus_task.take() {
+                    task.cancel();
+                }
+                let hwnd = self.hwnd;
+                self.focus_task = Some(cx.spawn_background(move |token| {
+                    Message::Revealed(generation, index, native::reveal(hwnd, index, &token))
+                }));
+            }
+            Message::Revealed(generation, index, result)
+                if self.focus_is_current(generation, index) =>
+            {
+                self.focus_task = None;
+                match result {
+                    Ok(()) => self.focus_row(cx, false),
+                    Err(error) => crate::debug(&format!(
+                        "Revealing AppContainer row {index} failed: {error}"
+                    )),
+                }
+            }
+            Message::ContextMenu => {
+                self.menu_timer = None;
+                // TrackPopupMenu runs a native message loop; leave the component update
+                // before entering it so nested window dispatch cannot re-enter this borrow.
+                if !cx.run_window(|window| {
+                    Message::MenuFinished(native::context_menu(window.as_raw() as usize))
+                }) {
+                    crate::debug("Native context menu callback could not be scheduled");
+                }
+            }
+            Message::MenuFinished(result) => match result {
+                Ok(Some(command)) => {
+                    let _ = cx.sender().send(match command {
+                        native::MenuCommand::CopyRows => Message::Copy(false),
+                        native::MenuCommand::CopyColumn => Message::Copy(true),
+                        native::MenuCommand::ExemptAll => Message::SetAll(true),
+                        native::MenuCommand::ExemptNone => Message::SetAll(false),
+                    });
+                }
+                Ok(None) => {}
+                Err(error) => self.operation_failed(error),
+            },
+            Message::RowFocused(sid) if self.list.rows.iter().any(|row| row.app.sid == sid) => {
+                // A checkbox may take focus without changing the app's selected set.
+                if self.selection.focused.as_ref() != Some(&sid) {
+                    if let Some(task) = self.focus_task.take() {
+                        task.cancel();
                     }
+                    self.selection.focused = Some(sid);
                 }
             }
             Message::Focus(Some(index)) => {
@@ -411,7 +531,7 @@ impl Component for MainWindow {
                         },
                         event.modifiers.contains(InputModifiers::SHIFT),
                     );
-                    self.focus_row();
+                    self.focus_row(cx, true);
                 } else if event.key == VirtualKey::SPACE
                     && let Some(sid) = &self.selection.focused
                 {
@@ -422,6 +542,24 @@ impl Component for MainWindow {
                 }
             }
             Message::Copy(column) => self.copy(column),
+            Message::CloseRequested => {
+                if !self.list.saving {
+                    if self.list.is_dirty() {
+                        self.enqueue(Dialog::Close);
+                    } else {
+                        self.close.confirmed.set(true);
+                        let _ = cx.close_window();
+                    }
+                } else {
+                    self.close.requested.set(false);
+                }
+            }
+            Message::Help => {
+                if let Err(error) = native::open_help(self.hwnd, LEARN_URL) {
+                    self.operation_failed(error);
+                }
+            }
+            Message::HoverHelp(value) => self.hovering_help = value,
             Message::Save if !self.dialog_open => {
                 if let Some(sids) = self.list.begin_save() {
                     cx.spawn_background(move |_| Message::Saved(netiso::set_exempted(&sids)));
@@ -461,6 +599,13 @@ impl Component for MainWindow {
             Message::DialogClosed(result) => {
                 self.dialog_open = false;
                 match &self.dialog {
+                    Some(Dialog::Close) => {
+                        self.close.requested.set(false);
+                        if result == ContentDialogResult::Primary {
+                            self.close.confirmed.set(true);
+                            let _ = cx.close_window();
+                        }
+                    }
                     Some(Dialog::Refresh) if result == ContentDialogResult::Primary => {
                         self.refresh(true, cx)
                     }
@@ -483,6 +628,8 @@ impl Component for MainWindow {
             Message::Size(size) => self.table_width = size.width.max(1240.0),
             _ => {}
         }
+        self.close.dirty.set(self.list.is_dirty());
+        self.close.saving.set(self.list.saving);
     }
     fn view(&self, _: &Startup, cx: &mut ViewContext<Self>) -> View {
         cx.window_title(rust_i18n::t!("window.title"));
@@ -511,79 +658,91 @@ impl Component for MainWindow {
         status.push(
             TextBlock::new()
                 .automation_id("status")
-                .text(&self.status)
+                .text(if self.hovering_help {
+                    &self.version
+                } else {
+                    &self.status
+                })
                 .text_wrapping(TextWrapping::Wrap)
                 .into(),
         );
-        Grid::new()
-            .rows([
-                GridLength::Auto,
-                GridLength::Auto,
-                GridLength::STAR,
-                GridLength::Auto,
-            ])
-            .children((
-                explanation_bar()
-                    .grid_row(0)
-                    .margin(Thickness::new(16.0, 12.0, 16.0, 4.0)),
+        Border::new()
+            .automation_id("main")
+            .on_preview_key_down(keys::global(cx.sender()))
+            .content(
                 Grid::new()
-                    .grid_row(1)
-                    .columns([GridLength::STAR, GridLength::Auto])
+                    .rows([
+                        GridLength::Auto,
+                        GridLength::Auto,
+                        GridLength::STAR,
+                        GridLength::Auto,
+                    ])
                     .children((
-                        CommandBar::new().primary_commands((
-                            AppBarButton::new()
-                                .automation_id("refresh")
-                                .label(rust_i18n::t!("toolbar.refresh"))
-                                .icon(Symbol::Refresh)
-                                .is_enabled(available.refresh)
-                                .on_click(cx.callback(|()| Message::Refresh)),
-                            AppBarSeparator::new(),
-                            AppBarButton::new()
-                                .label(rust_i18n::t!("toolbar.exempt_all"))
-                                .icon(Symbol::SelectAll)
-                                .is_enabled(available.bulk)
-                                .on_click(cx.callback(|()| Message::SetAll(true))),
-                            AppBarButton::new()
-                                .label(rust_i18n::t!("toolbar.exempt_none"))
-                                .icon(Symbol::ClearSelection)
-                                .is_enabled(available.bulk)
-                                .on_click(cx.callback(|()| Message::SetAll(false))),
-                            AppBarSeparator::new(),
-                            AppBarButton::new()
-                                .automation_id("save")
-                                .label(rust_i18n::t!("toolbar.save"))
-                                .icon(Symbol::Save)
-                                .is_enabled(available.save)
-                                .on_click(cx.callback(|()| Message::Save)),
-                        )),
-                        TextBlock::new()
-                            .grid_column(1)
-                            .automation_id("counter")
-                            .text(self.list.counter_text())
-                            .vertical_alignment(VerticalAlignment::Center)
-                            .margin(Thickness::xy(16.0, 0.0)),
+                        explanation_bar(cx)
+                            .grid_row(0)
+                            .margin(Thickness::new(16.0, 12.0, 16.0, 4.0)),
+                        Grid::new()
+                            .grid_row(1)
+                            .columns([GridLength::STAR, GridLength::Auto])
+                            .children((
+                                CommandBar::new().primary_commands((
+                                    AppBarButton::new()
+                                        .automation_id("refresh")
+                                        .label(rust_i18n::t!("toolbar.refresh"))
+                                        .icon(Symbol::Refresh)
+                                        .is_enabled(available.refresh)
+                                        .on_click(cx.callback(|()| Message::Refresh)),
+                                    AppBarSeparator::new(),
+                                    AppBarButton::new()
+                                        .label(rust_i18n::t!("toolbar.exempt_all"))
+                                        .icon(Symbol::SelectAll)
+                                        .is_enabled(available.bulk)
+                                        .on_click(cx.callback(|()| Message::SetAll(true))),
+                                    AppBarButton::new()
+                                        .label(rust_i18n::t!("toolbar.exempt_none"))
+                                        .icon(Symbol::ClearSelection)
+                                        .is_enabled(available.bulk)
+                                        .on_click(cx.callback(|()| Message::SetAll(false))),
+                                    AppBarSeparator::new(),
+                                    AppBarButton::new()
+                                        .automation_id("save")
+                                        .label(rust_i18n::t!("toolbar.save"))
+                                        .icon(Symbol::Save)
+                                        .is_enabled(available.save)
+                                        .on_click(cx.callback(|()| Message::Save)),
+                                )),
+                                TextBlock::new()
+                                    .grid_column(1)
+                                    .automation_id("counter")
+                                    .text(self.list.counter_text())
+                                    .vertical_alignment(VerticalAlignment::Center)
+                                    .margin(Thickness::xy(16.0, 0.0)),
+                            )),
+                        Border::new()
+                            .grid_row(2)
+                            .element_ref(&self.list_focus)
+                            .on_preview_key_down(keys::list(
+                                cx.sender(),
+                                self.checkbox_focus.clone(),
+                            ))
+                            .is_tab_stop(true)
+                            .content(
+                                ScrollViewer::new()
+                                    .horizontal_scroll_bar_visibility(ScrollBarVisibility::Auto)
+                                    .vertical_scroll_bar_visibility(ScrollBarVisibility::Disabled)
+                                    .content(list::view(self, cx)),
+                            ),
+                        Border::new()
+                            .grid_row(3)
+                            .padding(Thickness::xy(16.0, 8.0))
+                            .content(
+                                StackPanel::new()
+                                    .orientation(Orientation::Horizontal)
+                                    .spacing(8.0)
+                                    .children(status),
+                            ),
                     )),
-                Border::new()
-                    .grid_row(2)
-                    .element_ref(&self.list_focus)
-                    .on_preview_key_down(keys::list(cx.sender(), self.checkbox_focus.clone()))
-                    .is_tab_stop(true)
-                    .content(
-                        ScrollViewer::new()
-                            .horizontal_scroll_bar_visibility(ScrollBarVisibility::Auto)
-                            .vertical_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                            .content(list::view(self, cx)),
-                    ),
-                Border::new()
-                    .grid_row(3)
-                    .padding(Thickness::xy(16.0, 8.0))
-                    .content(
-                        StackPanel::new()
-                            .orientation(Orientation::Horizontal)
-                            .spacing(8.0)
-                            .children(status),
-                    ),
-            ))
+            )
             .content_dialog(dialogs::view(
                 self.dialog.as_ref(),
                 self.dialog_open,
@@ -595,7 +754,7 @@ impl Component for MainWindow {
 
 /// Informational InfoBar look-alike (§4.2). InfoBar has no Content/ActionButton relation in
 /// a29e064, so the Learn more link would otherwise sit on a row of its own.
-fn explanation_bar() -> Border {
+fn explanation_bar(cx: &ViewContext<MainWindow>) -> Border {
     // Glyphs and sizes follow the WinUI InfoBar template: a status circle behind an "i".
     const ICON_BACKGROUND_GLYPH: &str = "\u{F136}";
     const INFORMATIONAL_ICON_GLYPH: &str = "\u{F13F}";
@@ -625,12 +784,18 @@ fn explanation_bar() -> Border {
                         .vertical_alignment(VerticalAlignment::Center)
                         .text_wrapping(TextWrapping::Wrap)
                         .text(rust_i18n::t!("window.explanation")),
-                    HyperlinkButton::new()
+                    Border::new()
                         .grid_column(2)
                         .vertical_alignment(VerticalAlignment::Center)
-                        .content(rust_i18n::t!("window.learn_more").into_owned())
-                        .navigate_uri(LEARN_URL)
-                        .expect("fixed Microsoft Learn URI"),
+                        .on_pointer_entered(cx.callback(|_| Message::HoverHelp(true)))
+                        .on_pointer_exited(cx.callback(|_| Message::HoverHelp(false)))
+                        .content(
+                            HyperlinkButton::new()
+                                .vertical_alignment(VerticalAlignment::Center)
+                                .content(rust_i18n::t!("window.learn_more").into_owned())
+                                .navigate_uri(LEARN_URL)
+                                .expect("fixed Microsoft Learn URI"),
+                        ),
                 )),
         )
 }
@@ -639,7 +804,7 @@ fn explanation_bar() -> Border {
     clippy::manual_dangling_ptr,
     reason = "MAKEINTRESOURCEW(1) is an integer resource identifier"
 )]
-fn set_window_icons(window: WindowHandle<'_>) -> Result<(), Error> {
+fn set_window_icons(window: &WindowHandle<'_>) -> Result<(), Error> {
     // SAFETY: null requests our module; resource ID 1 is embedded by build.rs.
     // LR_SHARED ties icon lifetime to the module, so no icon handle needs freeing.
     let module = unsafe { GetModuleHandleW(PCWSTR::null()) };

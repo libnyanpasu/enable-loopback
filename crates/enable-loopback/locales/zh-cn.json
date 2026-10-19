@@ -76,7 +76,10 @@
     "load_failed": "无法获取本机的 AppContainer 列表。\n\n%{detail}",
     "admin_title": "未保存修改",
     "admin_body": "必须以管理员身份运行本工具才能修改 AppContainer 配置。",
-    "save_title": "保存失败"
+    "save_title": "保存失败",
+    "close_title": "不保存就退出？",
+    "close_body": "尚未保存修改，仍要退出吗？",
+    "exit": "退出"
   },
   "menu": {
     "copy_rows": "复制选中行",

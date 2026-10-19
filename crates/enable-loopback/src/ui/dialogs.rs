@@ -4,6 +4,7 @@ use windows_reactor::*;
 
 pub(super) enum Dialog {
     Refresh,
+    Close,
     Fallback { code: u32, force: bool },
     Orphan { sid: String },
     Error { title: String, body: String },
@@ -19,6 +20,12 @@ pub(super) fn view(
         .is_open(open)
         .on_closed(cx.callback(Message::DialogClosed));
     match dialog {
+        Some(Dialog::Close) => base
+            .title(rust_i18n::t!("dialog.close_title"))
+            .content(text(&rust_i18n::t!("dialog.close_body")))
+            .primary_button_text(rust_i18n::t!("dialog.exit"))
+            .close_button_text(rust_i18n::t!("dialog.cancel"))
+            .default_button(ContentDialogButton::Close),
         Some(Dialog::Refresh) => base
             .title(rust_i18n::t!("dialog.refresh_title"))
             .content(text(&rust_i18n::t!("dialog.refresh_body")))

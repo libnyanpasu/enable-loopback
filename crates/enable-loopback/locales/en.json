@@ -76,7 +76,10 @@
     "load_failed": "Unable to collect the list of AppContainers on this system.\n\n%{detail}",
     "admin_title": "Changes not saved",
     "admin_body": "Run this tool as an administrator to change AppContainer configurations.",
-    "save_title": "Failed to save settings"
+    "save_title": "Failed to save settings",
+    "close_title": "Exit without saving?",
+    "close_body": "You have not saved your changes. Exit anyway?",
+    "exit": "Exit"
   },
   "menu": {
     "copy_rows": "Copy selected rows",

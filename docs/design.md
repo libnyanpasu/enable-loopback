@@ -230,11 +230,11 @@ struct AppContainer {
 
 | 键 | 作用 |
 | --- | --- |
-| `F5` | 刷新（原工具为 `Alt+R` 助记符；WinUI 用 `AccessKey`，`Alt` 后显示 R/A/N/S/L） |
+| `F5` | 刷新（原工具为 `Alt+R` 助记符；a29e064 未暴露 AccessKey（所有生成声明及 visual_methods 中均无该方法），根 Border 显式处理 Alt+R/A/N/S/L，不显示访问键提示） |
 | `Ctrl+S` | 保存（新增，替代 `Alt+S` 助记符） |
 | `Ctrl+A` | 列表全选 |
 | `Ctrl+C` | 复制选中行 |
-| `Space` | 切换焦点行勾选（ListView 默认） |
+| `Space` | 切换焦点行勾选（列表 Border 处理；CheckBox 焦点保留原生 Space 行为） |
 | `F1` / `Alt+L` | 了解更多 |
 
 ## 5. i18n
@@ -261,22 +261,28 @@ struct AppContainer {
 | 单实例置前 | 无 | 无 | 互斥量 + 共享内存中的 HWND + `SetForegroundWindow`，与 UI 框架无关 |
 | 后台任务 | `spawn_background` | 同左 | 刷新用 |
 | 对话框 | `ContentDialog` | 同左 | 可用 |
-| 快捷键 | `KeyAccelerators` | 同左（D/O/S/M 键与组合修饰键缺失，见上游 #5087 第 14 项） | `Ctrl+S` 受影响：用 HWND 子类化处理 `WM_KEYDOWN`，或等上游 |
+| 快捷键 | `KeyAccelerators` | 同左（D/O/S/M 键与组合修饰键缺失，见上游 #5087 第 14 项） | `Ctrl+S` 等使用根 Border 的 `on_preview_key_down`（`:2476`，generated_declarations.rs），KeyEventInfo 提供完整 VirtualKey 与修饰键（declaration.rs:1228–1315）；XAML 键盘消息不经过顶层 HWND，子类过程只拦截关闭 |
 
 **版本选择**：关闭拦截依赖 master 才有的 `run_window`，因此依赖 `windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "<固定提交>" }`，下一个 crates.io 版本发布后改回版本号。不用第三方转发的 `windows-reactor-pre`（描述为"为 guinea 项目转发"，非官方）。
 
 上游相关 issue（2026-10-19）：#5087（open，原生 UI 契约缺口，含上下文菜单、快捷键、窗口集成、ListView 容器样式；不含多选）；#4901（closed，窗口关闭与应用退出分离）。
 
+### 6.0 实施补充（a29e064，2026-10-20）
+
+- **排序容器重建**：UIA 在实现并选择中部行后点击表头，复现原地重排的 `E_INVALIDARG`；该版本的容器重排走 `src/native/winui/relations.rs:360–393` 的 ReplaceAll/RemoveAt/InsertAt。应用排序时更换 ListView 的 key，保留模型中的 SID 选区；下一 UI 帧再恢复 selected_index，避免在空 Items 集合上设非空索引。
+- **滚动到选中行**：`ListView` 没有 ElementRef/ScrollIntoView（`src/generated_declarations.rs:3118–3201`）；`ElementRef::request_focus_result` 只提供 Focus（`src/reference.rs:129–147`），未实现的行 Focus 返回 false。ui/native.rs 在 reactor 后台任务的独立 COM MTA 中，对本窗口的 `apps` 元素调用 UIA ItemContainer / VirtualizedItem.Realize / ScrollItem.ScrollIntoView，完成后回 UI 线程用 ElementRef 恢复焦点。任务可取消，且用列表代次及当前 SID 索引校验结果，避免陈旧焦点。此路径已通过锁屏 UIA 验证：选择第 131 行后倒序排序，单选焦点仍在同一 SID 且 IsOffscreen=false。遵循 [UIA 线程规则](https://learn.microsoft.com/windows/win32/winauto/uiauto-threading)；不在 UI 线程调用自身的 UIA provider。
+- **上下文菜单**：MenuExt 的公开 trait 是通用的，但 `src/ir.rs:166–173` 仅允许 Button/DropDownButton/MenuBarItem；Border.menu 实际运行报 InvalidAttachment(Border)。行右键使用原生弹出菜单，先提交新选区的 UI 帧，再显示菜单；列由行内 x 坐标与固定列宽计算。
+
 ### 6.1 退出前确认
 
 1. 窗口创建后，组件在 `create` 中调用 `run_window`，对 HWND 安装子类过程，同时把 HWND 写入单实例共享内存。
 2. 子类过程收到 `WM_CLOSE`：若组件状态为脏（共享的 `Rc<Cell<bool>>`，UI 线程内读写），吞掉消息并给组件发消息"请求关闭"；否则交给默认处理。
-3. 组件弹"不保存就退出？"`ContentDialog`；用户选"退出"后置位"已确认"标志并调用 `close_window`，子类过程见到标志即放行。
+3. 组件弹"不保存就退出？"`ContentDialog`；保存写入期间暂缓关闭以保留写入快照，子类过程在 `WM_NCDESTROY` 移除自身并释放 UI 线程的 Rc 状态。用户选"退出"后置位"已确认"标志并调用 `close_window`，子类过程见到标志即放行。
 4. 风险：需要实测 WinUI 3 的标题栏关闭按钮与 `Alt+F4` 都经过 `WM_CLOSE`（AppWindow 的 Closing 事件即由此触发，预期成立）。
 
 ### 6.2 自建多选模型
 
-master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifiers`：Shift/Control，及左右键）与 `on_key_down`/`on_key_up`（`KeyEventInfo` 含按键与修饰键），足以在应用内实现多选，不必改 reactor：
+master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifiers`：Shift/Control，及左右键）与 `on_preview_key_down`/`on_key_up`（`KeyEventInfo` 含按键与修饰键），足以在应用内实现多选，不必改 reactor：
 
 1. `ListView` 设为 `Single`，WinUI 的单选索引作为**焦点行**（负责键盘焦点与滚动到可见），由 `on_selection_changed` 回报。
 2. 应用自己维护 `selected: BTreeSet<Sid>` 与 `anchor`。每行包一层 `Border`，`on_pointer_pressed`：
@@ -284,12 +290,12 @@ master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifi
    - `Ctrl`：切换该行；
    - `Shift`：选中 `anchor`..该行（按当前排序后的顺序）；
    - 右键：该行不在集合内时先改为单选该行（与 Windows 资源管理器一致），并记录右键所在列供"复制选中列"使用。
-3. 列表外层 `Border` 的 `on_key_down`：`Shift+↑/↓` 扩展选区；`Ctrl+A` 全选；`Ctrl+C` 复制；单独 `↑/↓` 交给 WinUI 移动焦点行后同步为单选。
-4. 选中行用 `ThemeBrush::Accent` 背景及 `SolidBackground` 文字绘制，当前用户行用 `CardStroke`。a29e064 的 ThemeBrush 没有选择色（`src/declaration.rs:217–239`），ListView 也没有容器样式或 ResourceOverrides 方法（`src/generated_declarations.rs:3118–3201`）；保留 WinUI 单选焦点框，应用选区在行内容上覆盖其底色。主题资源随亮/暗色及高对比度解析，外观留待可见桌面核对。
+3. 列表外层 `Border` 的 `on_preview_key_down`：`Shift+↑/↓` 扩展选区；`Ctrl+A` 全选；`Ctrl+C` 复制；单独 `↑/↓` 也由纯 Selection 模型移动焦点并同步 WinUI selected_index；Space 在焦点行切换豁免，焦点在 CheckBox 时保留其原生 Space 行为。
+4. 选中行用 `CardBackground` 填充、`Accent` 左边线；当前用户行用 `CardBackground` 填充、`CardStroke` 细边线。文字始终用 `PrimaryText`，避免把描边色当填充色导致高对比度下文字与背景同色。行的 `SolidBackground` 不透明底层遮住 WinUI 单选填充。a29e064 的 ThemeBrush 没有选择色（`src/declaration.rs:217–239`），ListView 也没有容器样式或 ResourceOverrides 方法（`src/generated_declarations.rs:3118–3201`）；保留 WinUI 单选焦点框，应用选区在行内容上覆盖其底色。主题资源随亮/暗色及高对比度解析，外观留待可见桌面核对。
 5. 选中集合按 SID 保存，刷新与排序后仍然有效；刷新后不存在的 SID 自动移出。
 6. 纯逻辑（点击/修饰键/区间计算）放在 `model`，用普通值测试。
 
-风险：ListViewItem 自身也处理指针按下，需要实测行内 `Border` 的 `on_pointer_pressed` 在其之前触发且修饰键可靠。若不成立，退路是给 reactor 打补丁（`[patch]` 指向我们 fork 的 windows-rs 固定提交），为 `ListView` 增加选中集合回调，并同时向上游提 PR。
+验证记录（2026-10-20）：锁屏下 UIA Selection/Toggle/Invoke 可用，但无法注入真实指针。按负责人决定继续使用冒泡 PointerPressed（行 Border 先于父 ListViewItem；CheckBox 消费自身点击）；实际修饰键、右键及外观检查列于 `docs/manual-smoke.md`。若实际行指针行为不成立，退路是给 reactor 打补丁（`[patch]` 指向我们 fork 的 windows-rs 固定提交），为 `ListView` 增加选中集合回调，并同时向上游提 PR。
 
 ## 7. 测试
 

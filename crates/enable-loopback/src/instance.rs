@@ -288,6 +288,15 @@ fn switch_to_window(name: &str) -> bool {
 }
 
 #[cfg(test)]
+pub(crate) fn acquire_for_test(suffix: &str) -> Primary {
+    let name = format!("EnableLoopbackTool.UiTest.{}.{suffix}", std::process::id());
+    let Outcome::Primary(primary) = acquire_named(&name).unwrap() else {
+        panic!("isolated test mutex must be free");
+    };
+    primary
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

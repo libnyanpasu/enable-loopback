@@ -76,7 +76,10 @@
     "load_failed": "無法取得本機的 AppContainer 清單。\n\n%{detail}",
     "admin_title": "未儲存變更",
     "admin_body": "必須以系統管理員身分執行本工具才能變更 AppContainer 設定。",
-    "save_title": "儲存失敗"
+    "save_title": "儲存失敗",
+    "close_title": "不儲存就結束？",
+    "close_body": "尚未儲存變更，仍要結束嗎？",
+    "exit": "結束"
   },
   "menu": {
     "copy_rows": "複製選取的列",

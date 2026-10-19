@@ -53,101 +53,130 @@ pub(super) fn view(window: &MainWindow, cx: &ViewContext<MainWindow>) -> View {
     Grid::new()
         .width(window.table_width)
         .rows([GridLength::Auto, GridLength::STAR])
-        .children((
+        .keyed_children([
             // ListViewItem's standard content inset is 12 DIP on either side.
-            Grid::new()
-                .margin(Thickness::xy(12.0, 0.0))
-                .columns(columns())
-                .children(headers),
-            ListView::new()
-                .grid_row(1)
-                .automation_id("apps")
-                .is_enabled(enabled)
-                .selection_mode(ListViewSelectionMode::Single)
-                .selected_index(
-                    window
-                        .selection
-                        .focused
-                        .as_ref()
-                        .and_then(|sid| window.list.rows.iter().position(|r| r.app.sid == *sid)),
-                )
-                .on_selection_changed(cx.callback(Message::Focus))
-                .items(window.list.rows.iter().map(|row| {
-                    let sid = row.app.sid.clone();
-                    let pointer_sid = sid.clone();
-                    let selected = window.selection.selected.contains(&sid);
-                    let check_focus = window.checkbox_focus.clone();
-                    let row_focus = window.checkbox_focus.clone();
-                    let mut cells: Vec<View> = vec![
-                        Border::new()
-                            .on_got_focus(move |_| check_focus.set(true))
-                            .content(
-                                CheckBox::new()
-                                    .width(40.0)
-                                    .min_width(0.0)
-                                    .is_checked(row.checked)
-                                    .automation_name(rust_i18n::t!(
-                                        "column.exempt",
-                                        name = row.columns(&window.placeholders)[0].clone()
-                                    ))
-                                    .on_is_checked_changed(cx.callback(move |v| {
-                                        Message::Checked(sid.clone(), v == Some(true))
-                                    })),
-                            )
-                            .into(),
-                    ];
-                    for (index, value) in row.columns(&window.placeholders).iter().enumerate() {
-                        cells.push(
-                            TextBlock::new()
-                                .grid_column(index as i32 + 1)
-                                .foreground(if selected {
-                                    ThemeBrush::SolidBackground
-                                } else {
-                                    ThemeBrush::PrimaryText
-                                })
-                                .text(value)
-                                .max_lines(1)
-                                .text_trimming(TextTrimming::CharacterEllipsis)
-                                .vertical_alignment(VerticalAlignment::Center)
-                                .margin(Thickness::xy(8.0, 0.0))
-                                .tooltip(value),
-                        );
-                    }
-                    let background: Brush = if selected {
-                        ThemeBrush::Accent.into()
-                    } else if !window.current_user.is_empty()
-                        && row.highlights_user(&window.current_user)
-                    {
-                        ThemeBrush::CardStroke.into()
+            keyed(
+                "headers",
+                Grid::new()
+                    .margin(Thickness::xy(12.0, 0.0))
+                    .columns(columns())
+                    .children(headers),
+            ),
+            keyed(
+                window.list_generation,
+                ListView::new()
+                    .grid_row(1)
+                    .automation_id("apps")
+                    .is_enabled(enabled)
+                    .selection_mode(ListViewSelectionMode::Single)
+                    .selected_index(if window.rebuilding_list {
+                        None
                     } else {
-                        Color::transparent().into()
-                    };
-                    DataItem::new(
-                        row.app.sid.to_string(),
-                        row.columns(&window.placeholders)[0].clone(),
-                    )
-                    .content(
-                        Border::new()
-                            .background(background)
-                            .element_ref(&window.row_focus[&row.app.sid])
-                            .is_tab_stop(true)
-                            .on_got_focus(move |event: FocusEventInfo| {
-                                if event.is_direct {
-                                    row_focus.set(false);
-                                }
-                            })
-                            .on_pointer_pressed(cx.callback(move |event: PointerEventInfo| {
-                                Message::Pointer(pointer_sid.clone(), column_at(event.x), event)
-                            }))
-                            .content(
-                                Grid::new()
-                                    .width(window.table_width - 48.0)
-                                    .columns(columns())
-                                    .children(cells),
-                            ),
-                    )
-                })),
-        ))
+                        window
+                            .selection
+                            .focused
+                            .as_ref()
+                            .and_then(|sid| window.list.rows.iter().position(|r| r.app.sid == *sid))
+                    })
+                    .on_selection_changed(cx.callback(Message::Focus))
+                    .items(window.list.rows.iter().map(|row| {
+                        let sid = row.app.sid.clone();
+                        let pointer_sid = sid.clone();
+                        let selected = window.selection.selected.contains(&sid);
+                        let check_focus = window.checkbox_focus.clone();
+                        let row_focus = window.checkbox_focus.clone();
+                        let focus_sid = sid.clone();
+                        let focus_sender = cx.sender();
+                        let mut cells: Vec<View> = vec![
+                            Border::new()
+                                .on_got_focus(move |_| check_focus.set(true))
+                                .content(
+                                    CheckBox::new()
+                                        .width(40.0)
+                                        .min_width(0.0)
+                                        .is_checked(row.checked)
+                                        .automation_name(rust_i18n::t!(
+                                            "column.exempt",
+                                            name = row.columns(&window.placeholders)[0].clone()
+                                        ))
+                                        .on_is_checked_changed(cx.callback(move |v| {
+                                            Message::Checked(sid.clone(), v == Some(true))
+                                        })),
+                                )
+                                .into(),
+                        ];
+                        for (index, value) in row.columns(&window.placeholders).iter().enumerate() {
+                            cells.push(
+                                TextBlock::new()
+                                    .grid_column(index as i32 + 1)
+                                    .foreground(ThemeBrush::PrimaryText)
+                                    .text(value)
+                                    .max_lines(1)
+                                    .text_trimming(TextTrimming::CharacterEllipsis)
+                                    .vertical_alignment(VerticalAlignment::Center)
+                                    .margin(Thickness::xy(8.0, 0.0))
+                                    .tooltip(value),
+                            );
+                        }
+                        let current_user = !window.current_user.is_empty()
+                            && row.highlights_user(&window.current_user);
+                        let fill: Brush = if selected || current_user {
+                            ThemeBrush::CardBackground.into()
+                        } else {
+                            Color::transparent().into()
+                        };
+                        let outline: Brush = if selected {
+                            ThemeBrush::Accent.into()
+                        } else if current_user {
+                            ThemeBrush::CardStroke.into()
+                        } else {
+                            Color::transparent().into()
+                        };
+                        DataItem::new(
+                            row.app.sid.to_string(),
+                            row.columns(&window.placeholders)[0].clone(),
+                        )
+                        .content(
+                            Border::new()
+                                // An opaque base masks WinUI's single-selection fill; that
+                                // selection is only our keyboard focus, not the app's set.
+                                .background(ThemeBrush::SolidBackground)
+                                .element_ref(&window.row_focus[&row.app.sid])
+                                .is_tab_stop(true)
+                                .on_got_focus(move |event: FocusEventInfo| {
+                                    if event.is_direct {
+                                        row_focus.set(false);
+                                    }
+                                    let _ =
+                                        focus_sender.send(Message::RowFocused(focus_sid.clone()));
+                                })
+                                .on_pointer_pressed(cx.callback(move |event: PointerEventInfo| {
+                                    Message::Pointer(pointer_sid.clone(), column_at(event.x), event)
+                                }))
+                                .content(
+                                    Grid::new().width(window.table_width - 48.0).children((
+                                        Border::new()
+                                            .background(fill)
+                                            .border_brush(outline)
+                                            .border_thickness(Thickness::new(
+                                                if selected {
+                                                    3.0
+                                                } else if current_user {
+                                                    1.0
+                                                } else {
+                                                    0.0
+                                                },
+                                                0.0,
+                                                0.0,
+                                                0.0,
+                                            )),
+                                        Grid::new().columns(columns()).children(cells),
+                                    )),
+                                ),
+                        )
+                    })),
+            ),
+        ])
         .into()
 }
 

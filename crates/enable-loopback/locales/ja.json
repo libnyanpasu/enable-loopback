@@ -76,7 +76,10 @@
     "load_failed": "このシステムの AppContainer 一覧を取得できません。\n\n%{detail}",
     "admin_title": "変更は保存されませんでした",
     "admin_body": "AppContainer の構成を変更するには、このツールを管理者として実行してください。",
-    "save_title": "設定の保存に失敗しました"
+    "save_title": "設定の保存に失敗しました",
+    "close_title": "保存せずに終了しますか？",
+    "close_body": "変更が保存されていません。それでも終了しますか？",
+    "exit": "終了"
   },
   "menu": {
     "copy_rows": "選択した行をコピー",
