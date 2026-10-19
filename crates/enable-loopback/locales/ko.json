@@ -1,0 +1,30 @@
+{
+  "window": {
+    "title": "AppContainer 루프백 예외 도구",
+    "explanation": "보안과 안정성을 위해 Windows는 UWP 앱이 이 컴퓨터로 네트워크 트래픽을 보내는 것을 제한합니다. 이 도구로 디버깅을 위해 제한을 해제할 수 있습니다.",
+    "learn_more": "자세히 알아보기",
+    "start_failed": "창을 열 수 없습니다.\n%{detail}"
+  },
+  "toolbar": {
+    "refresh": "새로 고침",
+    "exempt_all": "모두 예외 허용",
+    "exempt_none": "모든 예외 해제",
+    "save": "변경 내용 저장"
+  },
+  "status": {
+    "ready": "준비됨"
+  },
+  "runtime": {
+    "title": "Windows App Runtime 필요",
+    "missing": "이 도구에는 %{architecture}용 Windows App Runtime %{version} 이상이 필요합니다.",
+    "download_installer": "설치 프로그램 다운로드",
+    "open_download_page": "다운로드 페이지 열기",
+    "cancel": "취소"
+  },
+  "cli": {
+    "syntax": "사용법:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: 모든 AppContainer의 예외를 허용합니다.\n-none: 예외 목록을 비웁니다.\n-allow NAME: 이름에 NAME이 포함된 AppContainer를 추가합니다.\n-deny NAME: 일치하는 예외를 해제합니다. *는 모두 해제합니다.\n명령은 대소문자를 구분하지 않으며 앞의 - 또는 /는 생략할 수 있습니다.\nNAME에 공백을 사용할 수 있습니다. *는 모두 일치합니다.\n언어: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: 자동 새로 고침을 건너뜁니다. -registry: 레지스트리에서 직접 읽습니다.",
+    "missing_name": "이름의 일부를 지정하세요. *는 모두 일치합니다.",
+    "missing_language": "--lang 뒤에 언어 코드를 지정하세요.",
+    "not_implemented": "아직 구현되지 않은 명령입니다: %{command}"
+  }
+}

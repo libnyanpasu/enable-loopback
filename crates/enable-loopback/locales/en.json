@@ -1,0 +1,30 @@
+{
+  "window": {
+    "title": "AppContainer Loopback Exemption Tool",
+    "explanation": "For security and reliability, Windows prevents UWP apps from sending network traffic to this computer. This tool can remove that restriction for debugging.",
+    "learn_more": "Learn more",
+    "start_failed": "Unable to open the window.\n%{detail}"
+  },
+  "toolbar": {
+    "refresh": "Refresh",
+    "exempt_all": "Exempt all",
+    "exempt_none": "Exempt none",
+    "save": "Save changes"
+  },
+  "status": {
+    "ready": "Ready"
+  },
+  "runtime": {
+    "title": "Windows App Runtime required",
+    "missing": "This tool requires Windows App Runtime %{version} or later for %{architecture}.",
+    "download_installer": "Download installer",
+    "open_download_page": "Open download page",
+    "cancel": "Cancel"
+  },
+  "cli": {
+    "syntax": "Syntax:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Exempt all AppContainers.\n-none: Clear all exemptions.\n-allow NAME: Add AppContainers whose names contain NAME.\n-deny NAME: Remove matching exemptions; * removes all.\nCommands ignore case; the leading - or / is optional.\nNAME may contain spaces. Use * to match all.\nLanguages: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Skip automatic refresh. -registry: Read the registry directly.",
+    "missing_name": "Specify part of a name. Use * to match all.",
+    "missing_language": "Specify a language code after --lang.",
+    "not_implemented": "This command is not implemented yet: %{command}"
+  }
+}

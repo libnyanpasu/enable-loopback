@@ -1,0 +1,30 @@
+{
+  "window": {
+    "title": "AppContainer ループバック除外ツール",
+    "explanation": "セキュリティと信頼性のため、Windows は UWP アプリからこのコンピューターへのネットワーク通信を制限しています。このツールでデバッグ用に制限を解除できます。",
+    "learn_more": "詳細情報",
+    "start_failed": "ウィンドウを開けませんでした。\n%{detail}"
+  },
+  "toolbar": {
+    "refresh": "更新",
+    "exempt_all": "すべて除外",
+    "exempt_none": "除外をすべて解除",
+    "save": "変更を保存"
+  },
+  "status": {
+    "ready": "準備完了"
+  },
+  "runtime": {
+    "title": "Windows App Runtime が必要です",
+    "missing": "このツールには %{architecture} 用の Windows App Runtime %{version} 以降が必要です。",
+    "download_installer": "インストーラーをダウンロード",
+    "open_download_page": "ダウンロードページを開く",
+    "cancel": "キャンセル"
+  },
+  "cli": {
+    "syntax": "構文：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：すべての AppContainer を除外。\n-none：除外リストを空にする。\n-allow NAME：名前に NAME を含む AppContainer を追加。\n-deny NAME：一致する除外を解除。* ですべて解除。\n大文字と小文字は区別しません。先頭の - または / は省略可能です。\nNAME には空白を含められます。* はすべてに一致します。\n言語：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：自動更新しない。-registry：レジストリから直接読み取る。",
+    "missing_name": "名前の一部を指定してください。* はすべてに一致します。",
+    "missing_language": "--lang の後に言語コードを指定してください。",
+    "not_implemented": "このコマンドは未実装です：%{command}"
+  }
+}

@@ -1,0 +1,27 @@
+[package]
+name = "enable-loopback"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "enableLoopback"
+path = "src/main.rs"
+# Keep the executable-only manifest out of the test harness; unit tests live in the library.
+test = false
+
+[dependencies]
+rust-i18n = "4"
+snafu = "0.8"
+sys-locale = "0.3"
+windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b" }
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt"] }
+
+[build-dependencies]
+resvg = { version = "0.45", default-features = false }
+ico = "0.5"
+embed-resource = "3"
+
+[dev-dependencies]
+serde_json = "1"

@@ -1,0 +1,30 @@
+{
+  "window": {
+    "title": "AppContainer 回環豁免工具",
+    "explanation": "基於安全性與可靠性的考量，Windows 禁止 UWP 應用程式向本機傳送網路流量。本工具可為偵錯目的解除此限制。",
+    "learn_more": "深入了解",
+    "start_failed": "無法開啟視窗。\n%{detail}"
+  },
+  "toolbar": {
+    "refresh": "重新整理",
+    "exempt_all": "全部豁免",
+    "exempt_none": "全部取消",
+    "save": "儲存變更"
+  },
+  "status": {
+    "ready": "就緒"
+  },
+  "runtime": {
+    "title": "需要 Windows App Runtime",
+    "missing": "本工具需要適用於 %{architecture} 的 Windows App Runtime %{version} 或更新版本。",
+    "download_installer": "下載安裝程式",
+    "open_download_page": "開啟下載頁面",
+    "cancel": "取消"
+  },
+  "cli": {
+    "syntax": "語法：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：豁免所有 AppContainer。\n-none：清空豁免清單。\n-allow NAME：新增名稱包含 NAME 的 AppContainer。\n-deny NAME：移除名稱相符的豁免；* 表示全部移除。\n命令不分大小寫，開頭的 - 或 / 可省略。\nNAME 可包含空格，以 * 比對全部。\n語言：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：不自動重新整理。-registry：直接讀取登錄。",
+    "missing_name": "必須指定部分名稱，以 * 比對全部。",
+    "missing_language": "請在 --lang 後指定語言代碼。",
+    "not_implemented": "此命令尚未實作：%{command}"
+  }
+}

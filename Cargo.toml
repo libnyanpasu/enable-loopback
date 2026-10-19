@@ -1,0 +1,11 @@
+[workspace]
+members = ["crates/enable-loopback"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0"
+repository = "https://github.com/libnyanpasu/enable-loopback.git"
+
+[profile.dev]
+debug = "line-tables-only"

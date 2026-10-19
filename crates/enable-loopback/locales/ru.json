@@ -1,0 +1,30 @@
+{
+  "window": {
+    "title": "Исключения замыкания на себя для AppContainer",
+    "explanation": "Для безопасности и надёжности Windows запрещает приложениям UWP отправлять сетевой трафик на этот компьютер. Эта утилита позволяет снять ограничение для отладки.",
+    "learn_more": "Подробнее",
+    "start_failed": "Не удалось открыть окно.\n%{detail}"
+  },
+  "toolbar": {
+    "refresh": "Обновить",
+    "exempt_all": "Разрешить всем",
+    "exempt_none": "Отменить все исключения",
+    "save": "Сохранить изменения"
+  },
+  "status": {
+    "ready": "Готово"
+  },
+  "runtime": {
+    "title": "Требуется Windows App Runtime",
+    "missing": "Для этой утилиты требуется Windows App Runtime %{version} или новее для %{architecture}.",
+    "download_installer": "Скачать установщик",
+    "open_download_page": "Открыть страницу загрузки",
+    "cancel": "Отмена"
+  },
+  "cli": {
+    "syntax": "Синтаксис:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Разрешить замыкание на себя всем AppContainer.\n-none: Очистить список исключений.\n-allow NAME: Добавить AppContainer, имена которых содержат NAME.\n-deny NAME: Удалить совпадающие исключения; * удаляет все.\nРегистр не учитывается. Начальный - или / необязателен.\nNAME может содержать пробелы. * соответствует всем именам.\nЯзыки: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Не обновлять автоматически. -registry: Читать прямо из реестра.",
+    "missing_name": "Укажите часть имени. * соответствует всем именам.",
+    "missing_language": "Укажите код языка после --lang.",
+    "not_implemented": "Эта команда ещё не реализована: %{command}"
+  }
+}
