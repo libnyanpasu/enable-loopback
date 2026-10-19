@@ -33,7 +33,7 @@ mod tests {
     fn row(saved: bool, checked: bool) -> Row {
         Row {
             app: AppContainer {
-                sid: Sid(vec![]),
+                sid: "S-1-1-0".parse::<Sid>().unwrap(),
                 users: vec![],
                 name: None,
                 display_name: None,

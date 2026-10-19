@@ -16,7 +16,7 @@ rust-i18n = "4"
 snafu = "0.8"
 sys-locale = "0.3"
 windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b" }
-windows = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt"] }
+windows = { git = "https://github.com/microsoft/windows-rs", rev = "a29e064b66132395577c097c25c221c0566f360b", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv"] }
 
 [build-dependencies]
 resvg = { version = "0.45", default-features = false }
