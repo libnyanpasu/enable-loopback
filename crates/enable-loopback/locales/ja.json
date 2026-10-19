@@ -31,8 +31,7 @@
   "cli": {
     "syntax": "構文：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：すべての AppContainer を除外。\n-none：除外リストを空にする。\n-allow NAME：名前に NAME を含む AppContainer を追加。\n-deny NAME：一致する除外を解除。* ですべて解除。\n大文字と小文字は区別しません。先頭の - または / は省略可能です。\nNAME には空白を含められます。* はすべてに一致します。\n言語：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：自動更新しない。-registry：レジストリから直接読み取る。",
     "missing_name": "名前の一部を指定してください。* はすべてに一致します。",
-    "missing_language": "--lang の後に言語コードを指定してください。",
-    "not_implemented": "このコマンドは未実装です：%{command}"
+    "missing_language": "--lang の後に言語コードを指定してください。"
   },
   "placeholder": {
     "display_name": "(表示名なし)",

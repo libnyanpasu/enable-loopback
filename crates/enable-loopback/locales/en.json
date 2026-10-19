@@ -31,8 +31,7 @@
   "cli": {
     "syntax": "Syntax:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Exempt all AppContainers.\n-none: Clear all exemptions.\n-allow NAME: Add AppContainers whose names contain NAME.\n-deny NAME: Remove matching exemptions; * removes all.\nCommands ignore case; the leading - or / is optional.\nNAME may contain spaces. Use * to match all.\nLanguages: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Skip automatic refresh. -registry: Read the registry directly.",
     "missing_name": "Specify part of a name. Use * to match all.",
-    "missing_language": "Specify a language code after --lang.",
-    "not_implemented": "This command is not implemented yet: %{command}"
+    "missing_language": "Specify a language code after --lang."
   },
   "placeholder": {
     "display_name": "(No DisplayName)",

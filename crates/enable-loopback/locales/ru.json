@@ -31,8 +31,7 @@
   "cli": {
     "syntax": "Синтаксис:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Разрешить замыкание на себя всем AppContainer.\n-none: Очистить список исключений.\n-allow NAME: Добавить AppContainer, имена которых содержат NAME.\n-deny NAME: Удалить совпадающие исключения; * удаляет все.\nРегистр не учитывается. Начальный - или / необязателен.\nNAME может содержать пробелы. * соответствует всем именам.\nЯзыки: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Не обновлять автоматически. -registry: Читать прямо из реестра.",
     "missing_name": "Укажите часть имени. * соответствует всем именам.",
-    "missing_language": "Укажите код языка после --lang.",
-    "not_implemented": "Эта команда ещё не реализована: %{command}"
+    "missing_language": "Укажите код языка после --lang."
   },
   "placeholder": {
     "display_name": "(Нет отображаемого имени)",

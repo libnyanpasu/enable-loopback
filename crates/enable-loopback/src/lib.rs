@@ -1,6 +1,6 @@
 //! Select language and dispatch CLI or GUI startup (§1.2/§3.1), checking runtime only for GUI.
 
-mod args;
+pub mod args;
 mod cli;
 mod i18n;
 pub mod model;
@@ -32,16 +32,7 @@ pub fn run() {
         }
     };
     let code = match parsed.mode {
-        args::Mode::Cli(command) => match cli::run(command) {
-            Ok(code) => code,
-            Err(cli::Error::ExecuteNotImplemented { command }) => {
-                debug(&rust_i18n::t!(
-                    "cli.not_implemented",
-                    command = format!("{command:?}")
-                ));
-                cli::FAILURE
-            }
-        },
+        args::Mode::Cli(command) => cli::run(command),
         args::Mode::Gui(options) => match runtime_check::ensure_available() {
             Ok(true) => match ui::run(options) {
                 Ok(()) => cli::SUCCESS,

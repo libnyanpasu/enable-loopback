@@ -75,8 +75,8 @@ pub fn parse(arguments: &[String]) -> Result<Args, Error> {
                         "allow" => (NamedCommand::Allow, |name| Command::Allow { name }),
                         _ => (NamedCommand::Deny, |name| Command::Deny { name }),
                     };
-                let name = positional[1..].join(" ");
-                if name.trim().is_empty() {
+                let name = positional[1..].join(" ").trim().to_owned();
+                if name.is_empty() {
                     return Err(Error::ParseName { command: verb });
                 }
                 Some(constructor(name))
@@ -178,6 +178,12 @@ mod tests {
             ),
             (vec!["-deny", "*"], Command::Deny { name: "*".into() }),
             (vec!["-allow", "*"], Command::Allow { name: "*".into() }),
+            (
+                vec!["-allow", "  My App  "],
+                Command::Allow {
+                    name: "My App".into(),
+                },
+            ),
             (
                 vec!["-allow", "manual", "-registry"],
                 Command::Allow {

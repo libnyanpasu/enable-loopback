@@ -31,8 +31,7 @@
   "cli": {
     "syntax": "사용법:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: 모든 AppContainer의 예외를 허용합니다.\n-none: 예외 목록을 비웁니다.\n-allow NAME: 이름에 NAME이 포함된 AppContainer를 추가합니다.\n-deny NAME: 일치하는 예외를 해제합니다. *는 모두 해제합니다.\n명령은 대소문자를 구분하지 않으며 앞의 - 또는 /는 생략할 수 있습니다.\nNAME에 공백을 사용할 수 있습니다. *는 모두 일치합니다.\n언어: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: 자동 새로 고침을 건너뜁니다. -registry: 레지스트리에서 직접 읽습니다.",
     "missing_name": "이름의 일부를 지정하세요. *는 모두 일치합니다.",
-    "missing_language": "--lang 뒤에 언어 코드를 지정하세요.",
-    "not_implemented": "아직 구현되지 않은 명령입니다: %{command}"
+    "missing_language": "--lang 뒤에 언어 코드를 지정하세요."
   },
   "placeholder": {
     "display_name": "(표시 이름 없음)",
