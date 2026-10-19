@@ -192,13 +192,15 @@ struct AppContainer {
 | 区域 | reactor 控件 | 说明 |
 | --- | --- | --- |
 | 说明 | 仿 Informational `InfoBar` 的 `Border`（CardBackground/CardStroke、圆角 4）内一行 `Grid`：状态圆图标（`FontIcon` F136+F13F）+ 自动换行 `TextBlock` + 右侧 `HyperlinkButton` | 替代原工具的 Label + LinkLabel；a29e064 的 `InfoBar` 没有 Content/ActionButton，链接放不进同一行，故自绘 |
-| 工具栏 | `CommandBar` + `AppBarButton`（`SymbolIcon`: Refresh / SelectAll / ClearSelection / Save）+ `AppBarSeparator` | 保存按钮用强调样式；禁用规则见 §3 |
+| 工具栏 | `CommandBar` + `AppBarButton`（`SymbolIcon`: Refresh / SelectAll / ClearSelection / Save）+ `AppBarSeparator` | 保存按钮使用标准样式（a29e064 的 `AppBarButton` 无 style 方法，`src/generated_declarations.rs:6098–6136`）；禁用规则见 §3 |
 | 计数 | `TextBlock` | "已豁免 n / 共 m"（已定保留）。n 按当前勾选计算，脏时同步变化 |
 | 表头 | `Grid` 一行，每列一个无边框 `Button`，排序列显示 ▲/▼ | reactor 无 DataGrid，用固定列宽 `Grid` 自绘 |
-| 列表 | `ListView` + `VirtualSource`，行模板为与表头同列宽的 `Grid`：`CheckBox` + 7 个 `TextBlock`（单行、尾部省略、`tooltip` 显示全文） | 248 行级别数据需虚拟化 |
+| 列表 | `ListView` + `DataItem`（WinUI 原生容器虚拟化），行内容为与表头同列宽的 `Grid`：`CheckBox` + 7 个 `TextBlock`（单行、尾部省略、`tooltip` 显示全文） | 保留默认 ItemsStackPanel，有限高度的 Grid/仅水平滚动的 ScrollViewer 不破坏纵向虚拟化；DataItem 内容由 reactor 预建，容器仍由 WinUI 按需实现 |
 | 状态栏 | 底部 `Border` + `TextBlock`；刷新中显示 `ProgressRing`（小号） | |
 | 右键菜单 | `MenuExt::menu` 挂在行上 | 项目见 §3.6 |
 | 确认/错误/孤儿 | `ContentDialog` | §4.4 |
+
+实现核对（a29e064）：`src/generated_declarations.rs:3118–3201` 的 ListView 只有 DataItem items，VirtualSource 仅见于 ItemsRepeater（`:4478`）。`src/native/winui/objects.rs:107–175` 直接创建 WinUI ListView，设置 ItemTemplate 而不替换默认 ItemsPanel；`:627–639`（relations.rs）用 ContentPresenter 展示 DataItem 内容。据 [WinUI 官方性能说明](https://learn.microsoft.com/windows/apps/develop/performance/optimize-gridview-and-listview)，保留虚拟化容器面板即可保留 UI 虚拟化。因此选用 ListView，保留 §6.2 的单选焦点机制。固定列宽总和超过初始窗口宽度时，表头和列表一起水平滚动。
 
 列宽（DIP，初始值）：勾选 40、显示名称 220、描述 220、包 200、AC 名称 160、AC SID 140、用户 140、文件 *（剩余）。
 
@@ -251,7 +253,7 @@ struct AppContainer {
 | 需求 | 0.100.0 | master `a29e064` | 处理 |
 | --- | --- | --- | --- |
 | 运行时依赖 | 框架依赖：要求已安装 **Windows App Runtime 2.4**（`Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe`），缺失时弹英文 MessageBox 引导下载 | 同左；另有 `windows-reactor-setup`（crates.io 0.100.0）支持自包含部署 | 见 §8.1 与 §9-1 |
-| 表格 | 无 DataGrid | 同左 | 自绘表头 + 固定列宽；不支持拖动调列宽 |
+| 表格 | 无 DataGrid | 同左（ListView 无 VirtualSource，保留 WinUI 原生容器虚拟化，证据见 §4.2） | 自绘表头 + 固定列宽；不支持拖动调列宽 |
 | 多选 | `ListView` 有 `Multiple`/`Extended` 模式，但 `on_selection_changed` 只回传 `Option<usize>` | 同左；但 `Border` 新增带修饰键的指针与键盘事件 | 拿不到完整选中集合，上游无相关 issue（2026-10-19 检索）。自建选中模型，见 §6.2 |
 | 右键菜单 | `MenuExt::menu`，回调参数为菜单项文本 | `menu`，回调参数为 `Key` | 可用；"复制选中列"需要知道右键所在列：在每个单元格分别挂菜单 |
 | 剪贴板 | 无 | 无 | 直接用 Win32 剪贴板 API（`OpenClipboard`/`SetClipboardData(CF_UNICODETEXT)`） |

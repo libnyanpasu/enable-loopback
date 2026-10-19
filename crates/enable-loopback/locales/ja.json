@@ -19,7 +19,11 @@
     "orphan_removal": "保存すると %{count} 件の孤立したレコードが削除されます。",
     "saved": "ループバック除外設定を更新しました。",
     "not_saved_admin": "保存されていません。管理者権限が必要です。",
-    "not_saved": "保存されていません。"
+    "not_saved": "保存されていません。",
+    "refreshing": "AppContainer 情報を更新しています…",
+    "refreshed": "%{time} に AppContainer 情報を更新しました。",
+    "load_failed": "AppContainer 情報を取得できませんでした [%{code}]",
+    "failed": "失敗：%{detail}"
   },
   "runtime": {
     "title": "Windows App Runtime が必要です",
@@ -45,5 +49,30 @@
   "instance": {
     "already_running": "このツールは既に実行中ですが、そのウィンドウに切り替えられません。",
     "start_failed": "このツールは既に実行中のようです。\n%{detail}"
+  },
+  "column": {
+    "display_name": "表示名",
+    "description": "説明",
+    "package": "パッケージ",
+    "name": "AC 名",
+    "sid": "AC SID",
+    "users": "ユーザー",
+    "binaries": "実行ファイル",
+    "exempt": "ループバック除外：%{name}"
+  },
+  "dialog": {
+    "refresh_title": "変更を破棄しますか？",
+    "refresh_body": "変更が保存されていません。それでも更新しますか？",
+    "cancel": "キャンセル",
+    "ok": "OK",
+    "warning": "警告",
+    "fallback": "NetIsoEnumAppContainers で一覧を取得できません。\nエラーコード：%{code}\n\n代わりにレジストリを読み取ります。一部の情報は利用できません。",
+    "orphan_title": "孤立した除外設定が見つかりました",
+    "orphan_body": "以下の SID のループバック除外設定がありますが、対応する AppContainer が見つかりません。",
+    "keep_prompting": "このセッションでは他の孤立した設定についても通知する",
+    "error_title": "操作に失敗しました",
+    "firewall_title": "Windows ファイアウォールが無効です",
+    "firewall_body": "Windows ファイアウォールサービスが実行されていないようです。他社製のセキュリティソフトが無効化または置き換えた可能性があります。そのソフトでループバック通信を許可するか、Windows ファイアウォールを有効にしてください。\n\n%{detail}",
+    "load_failed": "このシステムの AppContainer 一覧を取得できません。\n\n%{detail}"
   }
 }

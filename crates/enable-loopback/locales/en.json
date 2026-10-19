@@ -19,7 +19,11 @@
     "orphan_removal": "Saving will remove %{count} orphaned records.",
     "saved": "Loopback exemption configuration updated.",
     "not_saved_admin": "Changes not saved. Administrator privileges are required.",
-    "not_saved": "Changes not saved."
+    "not_saved": "Changes not saved.",
+    "refreshing": "Refreshing AppContainer information…",
+    "refreshed": "Refreshed AppContainer information at %{time}.",
+    "load_failed": "Failed to get AppContainer information [%{code}]",
+    "failed": "Failed: %{detail}"
   },
   "runtime": {
     "title": "Windows App Runtime required",
@@ -45,5 +49,30 @@
   "instance": {
     "already_running": "This tool is already running, but its window could not be activated.",
     "start_failed": "This tool appears to be running already.\n%{detail}"
+  },
+  "column": {
+    "display_name": "Display name",
+    "description": "Description",
+    "package": "Package",
+    "name": "AC name",
+    "sid": "AC SID",
+    "users": "Users",
+    "binaries": "Binaries",
+    "exempt": "Loopback exemption: %{name}"
+  },
+  "dialog": {
+    "refresh_title": "Discard changes?",
+    "refresh_body": "You have not saved your changes. Refresh anyway?",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "warning": "Warning",
+    "fallback": "Unable to use NetIsoEnumAppContainers to get the AppContainer list.\nError code: %{code}\n\nThe registry will be read instead; some information will be unavailable.",
+    "orphan_title": "Orphaned exemption found",
+    "orphan_body": "A loopback exemption exists for the SID below, but its AppContainer could not be found.",
+    "keep_prompting": "Keep prompting for other orphaned records this session",
+    "error_title": "Operation failed",
+    "firewall_title": "Windows Firewall is disabled",
+    "firewall_body": "The Windows Firewall service does not appear to be running. Third-party security software may have disabled or replaced it. Configure that software to allow loopback traffic, or enable Windows Firewall.\n\n%{detail}",
+    "load_failed": "Unable to collect the list of AppContainers on this system.\n\n%{detail}"
   }
 }

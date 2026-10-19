@@ -19,7 +19,11 @@
     "orphan_removal": "儲存將移除 %{count} 筆孤立記錄。",
     "saved": "回環豁免設定已更新。",
     "not_saved_admin": "尚未儲存。需要系統管理員權限。",
-    "not_saved": "尚未儲存。"
+    "not_saved": "尚未儲存。",
+    "refreshing": "正在重新整理 AppContainer 資訊…",
+    "refreshed": "已於 %{time} 重新整理 AppContainer 資訊。",
+    "load_failed": "取得 AppContainer 資訊失敗 [%{code}]",
+    "failed": "失敗：%{detail}"
   },
   "runtime": {
     "title": "需要 Windows App Runtime",
@@ -45,5 +49,30 @@
   "instance": {
     "already_running": "本工具已在執行，但無法切換至其視窗。",
     "start_failed": "本工具似乎已在執行。\n%{detail}"
+  },
+  "column": {
+    "display_name": "顯示名稱",
+    "description": "描述",
+    "package": "套件",
+    "name": "AC 名稱",
+    "sid": "AC SID",
+    "users": "使用者",
+    "binaries": "檔案",
+    "exempt": "回環豁免：%{name}"
+  },
+  "dialog": {
+    "refresh_title": "放棄變更？",
+    "refresh_body": "尚未儲存變更，仍要重新整理嗎？",
+    "cancel": "取消",
+    "ok": "確定",
+    "warning": "警告",
+    "fallback": "無法使用 NetIsoEnumAppContainers 取得清單。\n錯誤碼：%{code}\n\n將改為讀取登錄，部分資訊將無法使用。",
+    "orphan_title": "發現孤立的豁免記錄",
+    "orphan_body": "存在下列 SID 的回環豁免，但找不到對應的 AppContainer。",
+    "keep_prompting": "在本次工作階段中繼續提示其他孤立記錄",
+    "error_title": "操作失敗",
+    "firewall_title": "Windows 防火牆已停用",
+    "firewall_body": "Windows 防火牆服務似乎未執行。第三方安全軟體可能已停用或取代此服務。請在第三方軟體中允許回環流量，或啟用 Windows 防火牆。\n\n%{detail}",
+    "load_failed": "無法取得本機的 AppContainer 清單。\n\n%{detail}"
   }
 }

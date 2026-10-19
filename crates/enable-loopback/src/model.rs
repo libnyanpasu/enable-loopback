@@ -160,6 +160,15 @@ pub struct ListState {
     pub sort: Sort,
     /// Suppresses dirty notifications while refresh replaces rows (§3.3).
     pub refreshing: bool,
+    pub loaded: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Availability {
+    pub refresh: bool,
+    pub bulk: bool,
+    pub save: bool,
+    pub list: bool,
 }
 
 impl ListState {
@@ -191,7 +200,26 @@ impl ListState {
             orphans,
             sort,
             refreshing: false,
+            loaded: true,
         }
+    }
+
+    /// Keep UI enablement in the pure model, including the in-flight save snapshot.
+    pub fn availability(&self, saving: bool) -> Availability {
+        let idle = !self.refreshing && !saving;
+        Availability {
+            refresh: idle,
+            bulk: idle && self.loaded && !self.rows.is_empty(),
+            save: idle && self.is_dirty(),
+            list: idle && self.loaded,
+        }
+    }
+
+    pub fn begin_refresh(&mut self) {
+        self.refreshing = true;
+        self.loaded = false;
+        self.rows.clear();
+        self.orphans.clear();
     }
 
     pub fn is_dirty(&self) -> bool {
@@ -381,6 +409,81 @@ mod tests {
             binaries: Vec::new(),
             exempt_at_last_check: false,
         }
+    }
+
+    #[test]
+    fn availability_covers_manual_loading_clean_dirty_failed_and_saving() {
+        let mut state = ListState::default();
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: true,
+                bulk: false,
+                save: false,
+                list: false
+            }
+        );
+        state.begin_refresh();
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: false,
+                bulk: false,
+                save: false,
+                list: false
+            }
+        );
+        state.replace_apps(vec![app(1, None)], &[], &Placeholders::for_locale("en"));
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: true,
+                bulk: true,
+                save: false,
+                list: true
+            }
+        );
+        state.set_all(true);
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: true,
+                bulk: true,
+                save: true,
+                list: true
+            }
+        );
+        assert_eq!(
+            state.availability(true),
+            Availability {
+                refresh: false,
+                bulk: false,
+                save: false,
+                list: false
+            }
+        );
+        assert!(state.is_dirty());
+        state.begin_refresh();
+        state.refreshing = false; // failed load
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: true,
+                bulk: false,
+                save: false,
+                list: false
+            }
+        );
+        state.replace_apps(vec![], &[], &Placeholders::for_locale("en"));
+        assert_eq!(
+            state.availability(false),
+            Availability {
+                refresh: true,
+                bulk: false,
+                save: false,
+                list: true
+            }
+        );
     }
 
     #[test]

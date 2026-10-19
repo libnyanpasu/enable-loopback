@@ -19,7 +19,11 @@
     "orphan_removal": "저장하면 연결된 앱이 없는 레코드 %{count}개가 제거됩니다.",
     "saved": "루프백 예외 설정이 업데이트되었습니다.",
     "not_saved_admin": "저장하지 못했습니다. 관리자 권한이 필요합니다.",
-    "not_saved": "저장하지 못했습니다."
+    "not_saved": "저장하지 못했습니다.",
+    "refreshing": "AppContainer 정보를 새로 고치는 중…",
+    "refreshed": "%{time}에 AppContainer 정보를 새로 고쳤습니다.",
+    "load_failed": "AppContainer 정보를 가져오지 못했습니다 [%{code}]",
+    "failed": "실패: %{detail}"
   },
   "runtime": {
     "title": "Windows App Runtime 필요",
@@ -45,5 +49,30 @@
   "instance": {
     "already_running": "이 도구가 이미 실행 중이지만 해당 창으로 전환할 수 없습니다.",
     "start_failed": "이 도구가 이미 실행 중인 것 같습니다.\n%{detail}"
+  },
+  "column": {
+    "display_name": "표시 이름",
+    "description": "설명",
+    "package": "패키지",
+    "name": "AC 이름",
+    "sid": "AC SID",
+    "users": "사용자",
+    "binaries": "실행 파일",
+    "exempt": "루프백 예외: %{name}"
+  },
+  "dialog": {
+    "refresh_title": "변경 사항을 취소할까요?",
+    "refresh_body": "변경 사항을 저장하지 않았습니다. 그래도 새로 고칠까요?",
+    "cancel": "취소",
+    "ok": "확인",
+    "warning": "경고",
+    "fallback": "NetIsoEnumAppContainers로 목록을 가져올 수 없습니다.\n오류 코드: %{code}\n\n대신 레지스트리를 읽습니다. 일부 정보는 사용할 수 없습니다.",
+    "orphan_title": "연결되지 않은 예외 발견",
+    "orphan_body": "아래 SID에 대한 루프백 예외가 있지만 해당 AppContainer를 찾을 수 없습니다.",
+    "keep_prompting": "이번 세션에서 다른 연결되지 않은 예외도 계속 알림",
+    "error_title": "작업 실패",
+    "firewall_title": "Windows 방화벽이 꺼져 있습니다",
+    "firewall_body": "Windows 방화벽 서비스가 실행되고 있지 않은 것 같습니다. 타사 보안 소프트웨어가 서비스를 끄거나 대체했을 수 있습니다. 해당 소프트웨어에서 루프백 트래픽을 허용하거나 Windows 방화벽을 켜세요.\n\n%{detail}",
+    "load_failed": "이 시스템의 AppContainer 목록을 가져올 수 없습니다.\n\n%{detail}"
   }
 }
