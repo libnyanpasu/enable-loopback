@@ -41,5 +41,9 @@
     "sid": "(AC SID 없음)",
     "users": "(사용자 SID 없음)",
     "binaries": "(없음)"
+  },
+  "instance": {
+    "already_running": "이 도구가 이미 실행 중이지만 해당 창으로 전환할 수 없습니다.",
+    "start_failed": "이 도구가 이미 실행 중인 것 같습니다.\n%{detail}"
   }
 }

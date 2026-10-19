@@ -1,7 +1,8 @@
 //! Reactor window and controls (§4); later stages connect list state and background NetIso tasks.
 
-use crate::{args::GuiOptions, model::ListState};
+use crate::{args::GuiOptions, instance::WindowPublisher, model::ListState};
 use snafu::Snafu;
+use std::rc::Rc;
 use windows::{
     Win32::{libloaderapi::GetModuleHandleW, winuser::*},
     core::PCWSTR,
@@ -13,6 +14,8 @@ const LEARN_URL: &str =
 
 #[derive(Debug, Snafu)]
 pub enum Error {
+    #[snafu(display("Publishing the window for other instances failed: {source}"))]
+    PublishWindow { source: crate::instance::Error },
     #[snafu(display("Starting the reactor window failed: {source}"))]
     StartWindow { source: windows::core::Error },
     #[snafu(display("Loading icon resource {resource_id} at {size}px failed: {source}"))]
@@ -28,31 +31,50 @@ struct MainWindow {
     _options: GuiOptions,
 }
 
+#[derive(Clone)]
+pub struct Startup {
+    options: GuiOptions,
+    publisher: Rc<WindowPublisher>,
+}
+
+impl PartialEq for Startup {
+    fn eq(&self, other: &Self) -> bool {
+        self.options == other.options && Rc::ptr_eq(&self.publisher, &other.publisher)
+    }
+}
+
 enum Message {
-    IconLoaded(Result<(), Error>),
+    WindowPrepared(Result<(), Error>),
 }
 
 impl Component for MainWindow {
     type Message = Message;
-    type Input = GuiOptions;
+    type Input = Startup;
 
-    fn create(input: &GuiOptions, context: &ComponentContext<Self>) -> Self {
-        if !context.run_window(|window| Message::IconLoaded(set_window_icons(window))) {
-            crate::debug("Window icon callback could not be scheduled");
+    fn create(input: &Startup, context: &ComponentContext<Self>) -> Self {
+        let publisher = input.publisher.clone();
+        if !context.run_window(move |window| {
+            // SAFETY: run_window supplies this process's live HWND on the UI thread.
+            let result = unsafe { publisher.publish_window(window.as_raw().cast()) }
+                .map_err(|source| Error::PublishWindow { source })
+                .and_then(|()| set_window_icons(window));
+            Message::WindowPrepared(result)
+        }) {
+            crate::debug("Native window callback could not be scheduled");
         }
         Self {
             list: ListState::default(),
-            _options: *input,
+            _options: input.options,
         }
     }
 
     fn update(&mut self, message: Message, _: &ComponentContext<Self>) {
-        if let Message::IconLoaded(Err(error)) = message {
+        if let Message::WindowPrepared(Err(error)) = message {
             crate::debug(&error.to_string());
         }
     }
 
-    fn view(&self, _: &GuiOptions, context: &mut ViewContext<Self>) -> View {
+    fn view(&self, _: &Startup, context: &mut ViewContext<Self>) -> View {
         context.window_title(rust_i18n::t!("window.title"));
         context.window_visuals(
             WindowVisuals::new()
@@ -191,6 +213,7 @@ fn set_window_icons(window: WindowHandle<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn run(options: GuiOptions) -> Result<(), Error> {
-    App::run_component::<MainWindow>(options).map_err(|source| Error::StartWindow { source })
+pub fn run(options: GuiOptions, publisher: Rc<WindowPublisher>) -> Result<(), Error> {
+    App::run_component::<MainWindow>(Startup { options, publisher })
+        .map_err(|source| Error::StartWindow { source })
 }

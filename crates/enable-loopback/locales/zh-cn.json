@@ -41,5 +41,9 @@
     "sid": "(无 AC SID)",
     "users": "(无用户 SID)",
     "binaries": "(无)"
+  },
+  "instance": {
+    "already_running": "本工具已在运行，但无法切换到其窗口。",
+    "start_failed": "本工具似乎已在运行。\n%{detail}"
   }
 }

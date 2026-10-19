@@ -86,13 +86,12 @@ pub fn parse(arguments: &[String]) -> Result<Args, Error> {
     };
     Ok(Args {
         mode: command.map(Mode::Cli).unwrap_or_else(|| {
+            // frmMain searches the GUI command line: manual is case-sensitive,
+            // whereas -registry is case-insensitive. CLI verbs above are per-argument.
+            let command_line = positional.join(" ");
             Mode::Gui(GuiOptions {
-                manual: positional
-                    .iter()
-                    .any(|arg| arg.eq_ignore_ascii_case("manual")),
-                registry: positional
-                    .iter()
-                    .any(|arg| arg.eq_ignore_ascii_case("-registry")),
+                manual: command_line.contains("manual"),
+                registry: command_line.to_ascii_lowercase().contains("-registry"),
             })
         }),
         language,
@@ -215,16 +214,20 @@ mod tests {
             (vec![], false, false),
             (vec!["manual"], true, false),
             (vec!["-registry"], false, true),
-            (vec!["unknown", "MANUAL", "-REGISTRY"], true, true),
+            (vec!["unknown", "MANUAL", "-REGISTRY"], false, true),
             (vec!["unknown", "-all"], false, false),
-            (vec!["allowance", "-manual", "registry"], false, false),
+            (vec!["allowance", "-manual", "registry"], true, false),
+            (
+                vec!["prefixmanualsuffix", "prefix-REGISTRYsuffix"],
+                true,
+                true,
+            ),
         ] {
             assert_eq!(
                 parse_words(&words).unwrap().mode,
                 Mode::Gui(GuiOptions { manual, registry })
             );
         }
-        // Single-instance handling is intentionally deferred beyond stage 1.
     }
 
     #[test]

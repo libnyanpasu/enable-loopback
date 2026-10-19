@@ -3,6 +3,7 @@
 pub mod args;
 mod cli;
 mod i18n;
+pub mod instance;
 pub mod model;
 pub mod netiso;
 mod runtime_check;
@@ -33,25 +34,49 @@ pub fn run() {
     };
     let code = match parsed.mode {
         args::Mode::Cli(command) => cli::run(command),
-        args::Mode::Gui(options) => match runtime_check::ensure_available() {
-            Ok(true) => match ui::run(options) {
-                Ok(()) => cli::SUCCESS,
-                Err(error) => {
-                    show_message(
-                        &rust_i18n::t!("window.start_failed", detail = error.to_string()),
-                        MB_ICONERROR as u32,
-                    );
-                    cli::FAILURE
-                }
-            },
-            Ok(false) => cli::FAILURE,
+        args::Mode::Gui(options) => run_gui(options),
+    };
+    std::process::exit(code);
+}
+
+fn run_gui(options: args::GuiOptions) -> i32 {
+    // CLI and syntax have already returned; the original takes the GUI mutex before
+    // constructing the window. Check runtime availability only after owning the instance.
+    let primary = match instance::acquire() {
+        Ok(instance::Outcome::Primary(primary)) => primary,
+        Ok(instance::Outcome::Secondary { switched: true }) => return instance::SWITCHED,
+        Ok(instance::Outcome::Secondary { switched: false }) => {
+            show_message(
+                &rust_i18n::t!("instance.already_running"),
+                MB_ICONINFORMATION as u32,
+            );
+            return instance::CANNOT_SWITCH;
+        }
+        Err(error) => {
+            show_message(
+                &rust_i18n::t!("instance.start_failed", detail = error.to_string()),
+                MB_ICONERROR as u32,
+            );
+            return instance::MUTEX_FAILURE;
+        }
+    };
+    match runtime_check::ensure_available() {
+        Ok(true) => match ui::run(options, primary.publisher()) {
+            Ok(()) => cli::SUCCESS,
             Err(error) => {
-                debug(&error.to_string());
+                show_message(
+                    &rust_i18n::t!("window.start_failed", detail = error.to_string()),
+                    MB_ICONERROR as u32,
+                );
                 cli::FAILURE
             }
         },
-    };
-    std::process::exit(code);
+        Ok(false) => cli::FAILURE,
+        Err(error) => {
+            debug(&error.to_string());
+            cli::FAILURE
+        }
+    }
 }
 
 fn show_message(text: &str, flags: u32) {

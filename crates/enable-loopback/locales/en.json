@@ -41,5 +41,9 @@
     "sid": "(No AC SID)",
     "users": "(No User SID)",
     "binaries": "(None)"
+  },
+  "instance": {
+    "already_running": "This tool is already running, but its window could not be activated.",
+    "start_failed": "This tool appears to be running already.\n%{detail}"
   }
 }

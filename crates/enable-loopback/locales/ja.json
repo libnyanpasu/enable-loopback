@@ -41,5 +41,9 @@
     "sid": "(AC SID なし)",
     "users": "(ユーザー SID なし)",
     "binaries": "(なし)"
+  },
+  "instance": {
+    "already_running": "このツールは既に実行中ですが、そのウィンドウに切り替えられません。",
+    "start_failed": "このツールは既に実行中のようです。\n%{detail}"
   }
 }
