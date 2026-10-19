@@ -197,7 +197,7 @@ struct AppContainer {
 | 表头 | `Grid` 一行，每列一个无边框 `Button`，排序列显示 ▲/▼ | reactor 无 DataGrid，用固定列宽 `Grid` 自绘 |
 | 列表 | `ListView` + `DataItem`（WinUI 原生容器虚拟化），行内容为与表头同列宽的 `Grid`：`CheckBox` + 7 个 `TextBlock`（单行、尾部省略、`tooltip` 显示全文） | 保留默认 ItemsStackPanel，有限高度的 Grid/仅水平滚动的 ScrollViewer 不破坏纵向虚拟化；DataItem 内容由 reactor 预建，容器仍由 WinUI 按需实现 |
 | 状态栏 | 底部 `Border` + `TextBlock`；刷新中显示 `ProgressRing`（小号） | |
-| 右键菜单 | `MenuExt::menu` 挂在行上 | 项目见 §3.6 |
+| 右键菜单 | 行 Border 右键事件后调用 Win32 `TrackPopupMenuEx` | 项目见 §3.6；a29e064 运行时拒绝 Border.menu（`src/ir.rs:166–173`），故原生弹出菜单由 ui/native.rs 管理 |
 | 确认/错误/孤儿 | `ContentDialog` | §4.4 |
 
 实现核对（a29e064）：`src/generated_declarations.rs:3118–3201` 的 ListView 只有 DataItem items，VirtualSource 仅见于 ItemsRepeater（`:4478`）。`src/native/winui/objects.rs:107–175` 直接创建 WinUI ListView，设置 ItemTemplate 而不替换默认 ItemsPanel；`:627–639`（relations.rs）用 ContentPresenter 展示 DataItem 内容。据 [WinUI 官方性能说明](https://learn.microsoft.com/windows/apps/develop/performance/optimize-gridview-and-listview)，保留虚拟化容器面板即可保留 UI 虚拟化。因此选用 ListView，保留 §6.2 的单选焦点机制。固定列宽总和超过初始窗口宽度时，表头和列表一起水平滚动。
@@ -255,7 +255,7 @@ struct AppContainer {
 | 运行时依赖 | 框架依赖：要求已安装 **Windows App Runtime 2.4**（`Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe`），缺失时弹英文 MessageBox 引导下载 | 同左；另有 `windows-reactor-setup`（crates.io 0.100.0）支持自包含部署 | 见 §8.1 与 §9-1 |
 | 表格 | 无 DataGrid | 同左（ListView 无 VirtualSource，保留 WinUI 原生容器虚拟化，证据见 §4.2） | 自绘表头 + 固定列宽；不支持拖动调列宽 |
 | 多选 | `ListView` 有 `Multiple`/`Extended` 模式，但 `on_selection_changed` 只回传 `Option<usize>` | 同左；但 `Border` 新增带修饰键的指针与键盘事件 | 拿不到完整选中集合，上游无相关 issue（2026-10-19 检索）。自建选中模型，见 §6.2 |
-| 右键菜单 | `MenuExt::menu`，回调参数为菜单项文本 | `menu`，回调参数为 `Key` | 可用；"复制选中列"需要知道右键所在列：在每个单元格分别挂菜单 |
+| 右键菜单 | `MenuExt::menu`，回调参数为菜单项文本 | `menu`，回调参数为 `Key` | 可用；"复制选中列"需要知道右键所在列：行 Border 的局部 x 坐标按固定列宽定位列；reactor 的 menu 只允许 Button/DropDownButton/MenuBarItem（`src/ir.rs:166–173`），不支持 Border 上的右键菜单，使用 Win32 popup menu |
 | 剪贴板 | 无 | 无 | 直接用 Win32 剪贴板 API（`OpenClipboard`/`SetClipboardData(CF_UNICODETEXT)`） |
 | 关闭拦截 | 只有 `WindowRef::request_close`，无 closing 回调 | 仍无 closing 回调；但新增 `ComponentContext::run_window`，在 UI 线程把窗口 HWND（`IWindowNative::WindowHandle`）交给回调，属公开的原生集成入口 | 用 `run_window` 取 HWND 后 `SetWindowSubclass` 拦截 `WM_CLOSE`，见 §6.1 |
 | 单实例置前 | 无 | 无 | 互斥量 + 共享内存中的 HWND + `SetForegroundWindow`，与 UI 框架无关 |
@@ -285,7 +285,7 @@ master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifi
    - `Shift`：选中 `anchor`..该行（按当前排序后的顺序）；
    - 右键：该行不在集合内时先改为单选该行（与 Windows 资源管理器一致），并记录右键所在列供"复制选中列"使用。
 3. 列表外层 `Border` 的 `on_key_down`：`Shift+↑/↓` 扩展选区；`Ctrl+A` 全选；`Ctrl+C` 复制；单独 `↑/↓` 交给 WinUI 移动焦点行后同步为单选。
-4. 选中行用主题的选中底色绘制（行 `Border` 背景），WinUI 自带的单选高亮通过 ListView 容器样式关闭或与之一致（实施时确认；容器样式能力见上游 #5087 第 8 项）。
+4. 选中行用 `ThemeBrush::Accent` 背景及 `SolidBackground` 文字绘制，当前用户行用 `CardStroke`。a29e064 的 ThemeBrush 没有选择色（`src/declaration.rs:217–239`），ListView 也没有容器样式或 ResourceOverrides 方法（`src/generated_declarations.rs:3118–3201`）；保留 WinUI 单选焦点框，应用选区在行内容上覆盖其底色。主题资源随亮/暗色及高对比度解析，外观留待可见桌面核对。
 5. 选中集合按 SID 保存，刷新与排序后仍然有效；刷新后不存在的 SID 自动移出。
 6. 纯逻辑（点击/修饰键/区间计算）放在 `model`，用普通值测试。
 

@@ -74,5 +74,9 @@
     "firewall_title": "Windows 防火牆已停用",
     "firewall_body": "Windows 防火牆服務似乎未執行。第三方安全軟體可能已停用或取代此服務。請在第三方軟體中允許回環流量，或啟用 Windows 防火牆。\n\n%{detail}",
     "load_failed": "無法取得本機的 AppContainer 清單。\n\n%{detail}"
+  },
+  "menu": {
+    "copy_rows": "複製選取的列",
+    "copy_column": "複製選取的欄"
   }
 }

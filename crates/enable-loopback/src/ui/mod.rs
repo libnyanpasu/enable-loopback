@@ -1,17 +1,26 @@
 //! Reactor presentation and asynchronous NetIso wiring (§3/§4).
 mod dialogs;
+mod keys;
 mod list;
 mod native;
 
 use crate::{
     args::GuiOptions,
     instance::WindowPublisher,
-    model::{Change, Column, ListState, Placeholders, Status},
+    model::{
+        Change, Column, Direction, ListState, Modifiers, Placeholders, PointerButton, Selection,
+        Status,
+    },
     netiso::{self, AppContainer, Sid},
 };
 use dialogs::Dialog;
 use snafu::Snafu;
-use std::{collections::VecDeque, rc::Rc, time::Duration};
+use std::{
+    cell::Cell,
+    collections::{BTreeMap, VecDeque},
+    rc::Rc,
+    time::Duration,
+};
 use windows::{
     Win32::{
         libloaderapi::GetModuleHandleW,
@@ -57,6 +66,10 @@ struct MainWindow {
     dialog_timer: Option<ComponentTimer>,
     table_width: f64,
     list_focus: ElementRef<Border>,
+    selection: Selection,
+    row_focus: BTreeMap<Sid, ElementRef<Border>>,
+    hwnd: usize,
+    checkbox_focus: Rc<Cell<bool>>,
 }
 
 #[derive(Clone)]
@@ -76,7 +89,7 @@ struct Loaded {
     user: String,
 }
 enum Message {
-    WindowPrepared(Result<(), Error>),
+    WindowPrepared(Result<usize, Error>),
     Refresh,
     BeginRefresh(bool),
     Loaded {
@@ -92,6 +105,10 @@ enum Message {
     NextDialog,
     KeepPrompting(bool),
     Size(WindowSize),
+    Pointer(Sid, Column, PointerEventInfo),
+    Focus(Option<usize>),
+    ListKey(KeyEventInfo),
+    Copy(bool),
 }
 
 fn load(registry: bool, force: bool) -> Result<Loaded, netiso::Error> {
@@ -114,6 +131,43 @@ fn load(registry: bool, force: bool) -> Result<Loaded, netiso::Error> {
 }
 
 impl MainWindow {
+    fn order(&self) -> Vec<Sid> {
+        self.list.rows.iter().map(|r| r.app.sid.clone()).collect()
+    }
+    fn focus_row(&self) {
+        if let Some(reference) = self
+            .selection
+            .focused
+            .as_ref()
+            .and_then(|sid| self.row_focus.get(sid))
+        {
+            let _ = reference.request_focus();
+        }
+    }
+    fn copy(&mut self, column: bool) {
+        let value = if column {
+            crate::model::copy_column(
+                &self.list.rows,
+                &self.selection.selected,
+                self.selection.context_column.unwrap_or(Column::DisplayName),
+                &self.placeholders,
+            )
+        } else {
+            crate::model::copy_rows(
+                &self.list.rows,
+                &self.selection.selected,
+                &self.placeholders,
+            )
+        };
+        if !value.is_empty()
+            && let Err(error) = native::clipboard(self.hwnd, &value)
+        {
+            self.enqueue(Dialog::Error {
+                title: rust_i18n::t!("dialog.error_title").into_owned(),
+                body: error.to_string(),
+            });
+        }
+    }
     fn enqueue(&mut self, dialog: Dialog) {
         self.dialogs.push_back(dialog);
         if self.dialog.is_none() {
@@ -203,9 +257,11 @@ impl Component for MainWindow {
         let publisher = input.publisher.clone();
         if !cx.run_window(move |window| {
             // SAFETY: run_window supplies this process's live HWND on the UI thread.
+            let hwnd = window.as_raw() as usize;
             let result = unsafe { publisher.publish_window(window.as_raw().cast()) }
                 .map_err(|source| Error::PublishWindow { source })
-                .and_then(|()| set_window_icons(window));
+                .and_then(|()| set_window_icons(window))
+                .map(|()| hwnd);
             Message::WindowPrepared(result)
         }) {
             crate::debug("Native window callback could not be scheduled");
@@ -226,12 +282,16 @@ impl Component for MainWindow {
             dialog_timer: None,
             table_width: 1240.0,
             list_focus: ElementRef::new(),
+            selection: Selection::default(),
+            row_focus: BTreeMap::new(),
+            hwnd: 0,
+            checkbox_focus: Rc::new(Cell::new(false)),
         }
     }
     fn update(&mut self, message: Message, cx: &ComponentContext<Self>) {
         match message {
             Message::WindowPrepared(Err(error)) => crate::debug(&error.to_string()),
-            Message::WindowPrepared(Ok(())) => {}
+            Message::WindowPrepared(Ok(hwnd)) => self.hwnd = hwnd,
             Message::BeginRefresh(force) => self.refresh(force, cx),
             Message::Refresh if self.list.availability(false).refresh && !self.dialog_open => {
                 if self.list.is_dirty() {
@@ -249,6 +309,12 @@ impl Component for MainWindow {
                 Ok(loaded) => {
                     self.list
                         .replace_apps(loaded.apps, &loaded.exempted, &self.placeholders);
+                    let order = self.order();
+                    self.selection.prune(&order);
+                    self.row_focus = order
+                        .into_iter()
+                        .map(|sid| (sid, ElementRef::new()))
+                        .collect();
                     self.current_user = loaded.user;
                     match native::time() {
                         Ok(time) => {
@@ -274,7 +340,86 @@ impl Component for MainWindow {
                 }
                 Err(error) => self.load_failed(error, fallback_code),
             },
-            Message::Sort(column) => self.list.sort_by(column, &self.placeholders),
+            Message::Sort(column) => {
+                self.list.sort_by(column, &self.placeholders);
+                let order = self.order();
+                if let Some(index) = self.selection.first_selected_index(&order) {
+                    self.selection.focused = Some(order[index].clone());
+                    self.focus_row();
+                }
+            }
+            Message::Pointer(sid, column, event) => {
+                let button = if event.is_right_button_pressed {
+                    PointerButton::Right
+                } else if event.is_left_button_pressed {
+                    PointerButton::Left
+                } else {
+                    return;
+                };
+                self.selection.click(
+                    &self.order(),
+                    &sid,
+                    Modifiers {
+                        control: event.modifiers.contains(InputModifiers::CONTROL),
+                        shift: event.modifiers.contains(InputModifiers::SHIFT),
+                    },
+                    button,
+                    column,
+                );
+                if button == PointerButton::Right {
+                    match native::context_menu(self.hwnd) {
+                        Ok(Some(command)) => {
+                            let _ = cx.sender().send(match command {
+                                native::MenuCommand::CopyRows => Message::Copy(false),
+                                native::MenuCommand::CopyColumn => Message::Copy(true),
+                                native::MenuCommand::ExemptAll => Message::SetAll(true),
+                                native::MenuCommand::ExemptNone => Message::SetAll(false),
+                            });
+                        }
+                        Ok(None) => {}
+                        Err(error) => self.enqueue(Dialog::Error {
+                            title: rust_i18n::t!("dialog.error_title").into_owned(),
+                            body: error.to_string(),
+                        }),
+                    }
+                }
+            }
+            Message::Focus(Some(index)) => {
+                let order = self.order();
+                if let Some(sid) = order.get(index) {
+                    // Pointer/Shift selection has already updated focused before this event.
+                    if self.selection.focused.as_ref() != Some(sid) {
+                        self.selection.focus_changed(&order, sid);
+                    }
+                }
+            }
+            Message::ListKey(event) if self.list.availability(false).list => {
+                let ctrl = event.modifiers.contains(InputModifiers::CONTROL);
+                if ctrl && event.key == VirtualKey::A {
+                    self.selection.select_all(&self.order());
+                } else if ctrl && event.key == VirtualKey::C {
+                    self.copy(false);
+                } else if event.key == VirtualKey::UP || event.key == VirtualKey::DOWN {
+                    self.selection.arrow(
+                        &self.order(),
+                        if event.key == VirtualKey::UP {
+                            Direction::Up
+                        } else {
+                            Direction::Down
+                        },
+                        event.modifiers.contains(InputModifiers::SHIFT),
+                    );
+                    self.focus_row();
+                } else if event.key == VirtualKey::SPACE
+                    && let Some(sid) = &self.selection.focused
+                {
+                    if let Some(row) = self.list.rows.iter_mut().find(|r| r.app.sid == *sid) {
+                        row.checked = !row.checked;
+                    }
+                    self.change_status(self.list.status_after_change(Change::Checked));
+                }
+            }
+            Message::Copy(column) => self.copy(column),
             Message::Checked(sid, checked) if self.list.availability(false).list => {
                 if let Some(row) = self.list.rows.iter_mut().find(|row| row.app.sid == sid) {
                     row.checked = checked;
@@ -393,6 +538,7 @@ impl Component for MainWindow {
                 Border::new()
                     .grid_row(2)
                     .element_ref(&self.list_focus)
+                    .on_preview_key_down(keys::list(cx.sender(), self.checkbox_focus.clone()))
                     .is_tab_stop(true)
                     .content(
                         ScrollViewer::new()

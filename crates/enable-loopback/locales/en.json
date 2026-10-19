@@ -74,5 +74,9 @@
     "firewall_title": "Windows Firewall is disabled",
     "firewall_body": "The Windows Firewall service does not appear to be running. Third-party security software may have disabled or replaced it. Configure that software to allow loopback traffic, or enable Windows Firewall.\n\n%{detail}",
     "load_failed": "Unable to collect the list of AppContainers on this system.\n\n%{detail}"
+  },
+  "menu": {
+    "copy_rows": "Copy selected rows",
+    "copy_column": "Copy selected column"
   }
 }
