@@ -93,6 +93,7 @@ pub(super) enum Message {
     ResizeLost,
     FinishResize,
     Pointer((String, Column, PointerEventInfo)),
+    Context((String, Column, PointerEventInfo)),
     ContextPoint(String, Column, Result<ScreenPoint, super::Error>),
     Scrolled(u64, String, bool, Result<bool, IntegrationError>),
     FocusReady(u64, String),
@@ -137,6 +138,7 @@ impl TableView {
                         checkbox_focus: self.checkbox_focus.clone(),
                         on_toggle: input.on_toggle.clone(),
                         on_pointer: cx.callback(Message::Pointer),
+                        on_context: cx.callback(Message::Context),
                         on_focus: input.on_focus.clone(),
                     },
                 ))
@@ -349,16 +351,16 @@ impl Component for TableView {
             }
             Message::FinishResize => self.commit_resize(),
             Message::Pointer((key, column, event)) if self.input.enabled && self.drag.is_none() => {
-                self.input.on_pointer.call((key.clone(), column, event));
-                if event.is_right_button_pressed {
-                    let _ = cx.run_window(move |window| {
-                        Message::ContextPoint(
-                            key,
-                            column,
-                            super::native::screen_point(window.as_raw() as usize, event),
-                        )
-                    });
-                }
+                self.input.on_pointer.call((key, column, event));
+            }
+            Message::Context((key, column, event)) if self.input.enabled && self.drag.is_none() => {
+                let _ = cx.run_window(move |window| {
+                    Message::ContextPoint(
+                        key,
+                        column,
+                        super::native::screen_point(window.as_raw() as usize, event),
+                    )
+                });
             }
             Message::ContextPoint(key, column, Ok(point)) if self.input.enabled => {
                 self.input.on_context_menu.call((key, column, point))

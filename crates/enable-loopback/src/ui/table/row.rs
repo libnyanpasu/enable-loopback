@@ -13,6 +13,8 @@ pub(super) struct Input {
     pub checkbox_focus: Rc<Cell<bool>>,
     pub on_toggle: Callback<(String, bool)>,
     pub on_pointer: Callback<(String, Column, PointerEventInfo)>,
+    /// Raised when a right-button press on this row is released, like WM_CONTEXTMENU.
+    pub on_context: Callback<(String, Column, PointerEventInfo)>,
     pub on_focus: Callback<String>,
 }
 
@@ -21,10 +23,13 @@ pub(super) struct TableRow {
     hovered: bool,
     keyboard_focused: bool,
     has_focus: bool,
+    /// A right-button press on this row awaits its release.
+    right_pressed: bool,
 }
 
 pub(super) enum Message {
     Hover(bool),
+    Released(PointerEventInfo),
     Focus(FocusEventInfo),
     Blur,
     Pointer(PointerEventInfo),
@@ -41,6 +46,7 @@ impl Component for TableRow {
             hovered: false,
             keyboard_focused: false,
             has_focus: false,
+            right_pressed: false,
         }
     }
 
@@ -51,7 +57,11 @@ impl Component for TableRow {
     fn update(&mut self, message: Message, _: &ComponentContext<Self>) {
         let input = &self.input;
         match message {
-            Message::Hover(value) => self.hovered = value,
+            Message::Hover(value) => {
+                self.hovered = value;
+                // A release outside this row must not open its menu later.
+                self.right_pressed &= value;
+            }
             Message::Focus(event) => {
                 self.has_focus = true;
                 if event.is_direct {
@@ -65,6 +75,7 @@ impl Component for TableRow {
                 self.has_focus = false;
             }
             Message::Pointer(event) => {
+                self.right_pressed = event.is_right_button_pressed;
                 self.keyboard_focused = false;
                 input.checkbox_focus.set(false);
                 input.on_pointer.call((
@@ -73,6 +84,16 @@ impl Component for TableRow {
                     event,
                 ));
             }
+            // Opening on press lets the matching release light-dismiss the new flyout.
+            Message::Released(event) if self.right_pressed && !event.is_right_button_pressed => {
+                self.right_pressed = false;
+                input.on_context.call((
+                    input.row.key.clone(),
+                    input.widths.column_at(event.x),
+                    event,
+                ));
+            }
+            Message::Released(_) => {}
             Message::Toggle(checked) => input
                 .on_toggle
                 .call((input.row.key.clone(), checked == Some(true))),
@@ -150,6 +171,7 @@ impl Component for TableRow {
             .on_pointer_entered(cx.callback(|_| Message::Hover(true)))
             .on_pointer_exited(cx.callback(|_| Message::Hover(false)))
             .on_pointer_pressed(cx.callback(Message::Pointer))
+            .on_pointer_released(cx.callback(Message::Released))
             .on_got_focus(cx.callback(Message::Focus))
             .on_lost_focus(cx.callback(|_| Message::Blur))
             .content(
