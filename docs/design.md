@@ -2,7 +2,7 @@
 
 **日期：** 2026-10-19
 
-**状态：** 设计草案第二版（已纳入 2026-10-19 评审决定），剩余待决见 §9。实现未开始。
+**状态：** 已实现（2026-10-20）。实施中因 reactor 限制做的调整记录在 §4.2、§4.5、§6.0–§6.2，fork 补丁见 issue #2；真实指针、键盘与外观的手动冒烟清单在 `docs/manual-smoke.md`。
 
 **基线：** 主仓 `main@d72ad2af0`；被替换的工具为 `backend/tauri/resources/enableLoopback.exe`（84 040 字节，.NET Framework 4 WinForms，来自 `Kuingsmile/uwp-tool` 的 `latest` release，无源码）；UI 框架 `windows-reactor`（microsoft/windows-rs，WinUI 3），crates.io 最新 0.100.0，master `a29e064`（2026-10-19）。
 
