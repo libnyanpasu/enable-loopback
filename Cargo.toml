@@ -1,5 +1,6 @@
 [workspace]
 members = ["crates/enable-loopback"]
+exclude = ["vendor/windows-rs"]
 resolver = "3"
 
 [workspace.package]

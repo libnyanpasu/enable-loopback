@@ -15,6 +15,10 @@ See also the [Windows App SDK downloads](https://learn.microsoft.com/windows/app
 Build and run in Git Bash:
 
 ```sh
+git clone --recursive https://github.com/libnyanpasu/enable-loopback.git
+cd enable-loopback
+# For an existing checkout:
+git submodule update --init
 export CARGO_INCREMENTAL=0
 cargo build
 cargo run -- --lang zh-cn
@@ -38,3 +42,7 @@ The executable requests the highest available privilege level. Read the
 [design specification](docs/design.md) for the planned behavior and architecture.
 
 Run tests with `cargo test`; only the GUI executable embeds the elevation manifest.
+
+The vendored windows-rs fork is a separate workspace. Check application formatting
+with `cargo fmt -p enable-loopback -- --check`; `cargo fmt --all` recursively visits
+the fork too and can exceed Windows' command-line limit.
