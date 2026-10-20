@@ -5,10 +5,18 @@
     "learn_more": "詳細情報",
     "start_failed": "ウィンドウを開けませんでした。\n%{detail}"
   },
+  "search": {
+    "placeholder": "アプリを検索",
+    "results": "%{count} 件が見つかりました",
+    "empty": "検索に一致するアプリはありません。"
+  },
   "toolbar": {
+    "counter": "除外済み %{exempt} / %{total}",
     "refresh": "更新",
     "exempt_all": "すべて除外",
     "exempt_none": "除外をすべて解除",
+    "exempt_results": "結果をすべて除外",
+    "exempt_none_results": "結果の除外を解除",
     "save": "変更を保存"
   },
   "status": {
@@ -16,6 +24,8 @@
     "dirty": "「変更を保存」をクリックして適用してください。",
     "exempt_all": "すべての AppContainer を除外する予定です。「変更を保存」をクリックして適用してください。",
     "exempt_none": "すべての AppContainer の除外を解除する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_results": "検索結果をすべて除外する予定です。「変更を保存」をクリックして適用してください。",
+    "exempt_none_results": "検索結果の除外をすべて解除する予定です。「変更を保存」をクリックして適用してください。",
     "orphan_removal": "保存すると %{count} 件の孤立したレコードが削除されます。",
     "saved": "ループバック除外設定を更新しました。",
     "not_saved_admin": "保存されていません。管理者権限が必要です。",

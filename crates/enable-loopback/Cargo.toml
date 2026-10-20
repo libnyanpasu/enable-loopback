@@ -16,7 +16,7 @@ rust-i18n = "4"
 snafu = "0.8"
 sys-locale = "0.3"
 windows-reactor = { path = "../../vendor/windows-rs/crates/libs/reactor" }
-windows = { path = "../../vendor/windows-rs/crates/libs/windows", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv", "synchapi", "memoryapi", "handleapi", "processthreadsapi", "datetimeapi", "sysinfoapi", "uiautomationclient", "uiautomationcore", "combaseapi", "objbase", "wtypesbase", "wtypes", "oaidl", "oleauto"] }
+windows = { path = "../../vendor/windows-rs/crates/libs/windows", features = ["appmodel", "libloaderapi", "debugapi", "winuser", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv", "synchapi", "memoryapi", "handleapi", "processthreadsapi", "datetimeapi", "sysinfoapi"] }
 
 [build-dependencies]
 resvg = { version = "0.45", default-features = false }
@@ -26,3 +26,8 @@ embed-resource = "3"
 [dev-dependencies]
 windows-reactor = { path = "../../vendor/windows-rs/crates/libs/reactor", features = ["test"] }
 serde_json = "1"
+rayon = "1.11"
+
+[[bench]]
+name = "search"
+harness = false

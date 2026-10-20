@@ -7,6 +7,9 @@ mod instance;
 mod model;
 mod netiso;
 mod runtime_check;
+// Shared with the release benchmark so it measures the production matcher.
+#[path = "model/search.rs"]
+pub mod search;
 mod ui;
 
 // rust-i18n's public macros resolve these hooks at the crate root; setup lives in i18n.

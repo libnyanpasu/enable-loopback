@@ -5,10 +5,18 @@
     "learn_more": "자세히 알아보기",
     "start_failed": "창을 열 수 없습니다.\n%{detail}"
   },
+  "search": {
+    "placeholder": "앱 검색",
+    "results": "%{count}개 항목 찾음",
+    "empty": "검색과 일치하는 앱이 없습니다."
+  },
   "toolbar": {
+    "counter": "예외 적용 %{exempt} / %{total}",
     "refresh": "새로 고침",
     "exempt_all": "모두 예외 허용",
     "exempt_none": "모든 예외 해제",
+    "exempt_results": "결과 모두 예외 허용",
+    "exempt_none_results": "결과 예외 해제",
     "save": "변경 내용 저장"
   },
   "status": {
@@ -16,6 +24,8 @@
     "dirty": "적용하려면 “변경 사항 저장”을 클릭하세요.",
     "exempt_all": "모든 AppContainer가 예외로 설정될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
     "exempt_none": "모든 AppContainer의 예외가 해제될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
+    "exempt_results": "모든 검색 결과가 예외로 설정될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
+    "exempt_none_results": "모든 검색 결과의 예외가 해제될 예정입니다. 적용하려면 “변경 사항 저장”을 클릭하세요.",
     "orphan_removal": "저장하면 연결된 앱이 없는 레코드 %{count}개가 제거됩니다.",
     "saved": "루프백 예외 설정이 업데이트되었습니다.",
     "not_saved_admin": "저장하지 못했습니다. 관리자 권한이 필요합니다.",

@@ -5,10 +5,18 @@
     "learn_more": "深入了解",
     "start_failed": "無法開啟視窗。\n%{detail}"
   },
+  "search": {
+    "placeholder": "搜尋應用程式",
+    "results": "找到 %{count} 個項目",
+    "empty": "找不到符合的應用程式。"
+  },
   "toolbar": {
+    "counter": "已豁免 %{exempt} / %{total}",
     "refresh": "重新整理",
     "exempt_all": "全部豁免",
     "exempt_none": "全部取消",
+    "exempt_results": "豁免全部結果",
+    "exempt_none_results": "取消全部結果",
     "save": "儲存變更"
   },
   "status": {
@@ -16,6 +24,8 @@
     "dirty": "按一下「儲存變更」以提交。",
     "exempt_all": "所有 AppContainer 待豁免。按一下「儲存變更」以提交。",
     "exempt_none": "所有 AppContainer 待移除豁免。按一下「儲存變更」以提交。",
+    "exempt_results": "所有搜尋結果待豁免。按一下「儲存變更」以提交。",
+    "exempt_none_results": "所有搜尋結果待移除豁免。按一下「儲存變更」以提交。",
     "orphan_removal": "儲存將移除 %{count} 筆孤立記錄。",
     "saved": "回環豁免設定已更新。",
     "not_saved_admin": "尚未儲存。需要系統管理員權限。",

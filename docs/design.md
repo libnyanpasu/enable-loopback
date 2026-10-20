@@ -22,7 +22,7 @@
    - `cli`：命令行模式；
    - `i18n`：文案。
 3. **提权**：沿用主仓现有方式——`backend/tauri/src/core/win_uwp.rs` 用 `runas` 启动，进程本身已提权。exe 清单保留原工具的 `requestedExecutionLevel level="highestAvailable"`，让用户直接双击运行时也能得到管理员令牌。不做自提权、不做 helper 进程。
-4. **不做的**：新增功能（搜索、筛选、批量清理孤儿等；唯一例外是工具栏的豁免计数，见 §4.2）、Windows 8 版本检查（WinAppSDK 2.x 最低就是 Windows 10 1809，检查已无意义）、x86 构建。只发布 x64 与 arm64。
+4. **不做的**：新增功能（批量清理孤儿等；工具栏计数见 §4.2，已批准的搜索扩展见 §10）、Windows 8 版本检查（WinAppSDK 2.x 最低就是 Windows 10 1809，检查已无意义）、x86 构建。只发布 x64 与 arm64。
 5. **原工具的 Fiddler 品牌**（`Learn more` 指向 `api.getfiddler.com`、悬停显示 Progress 版权）要替换，见 §3.9。
 6. **修正原工具的保存缺陷**（已定）：见 §3.5。除此以外的行为照原样复刻。
 
@@ -96,7 +96,7 @@ struct AppContainer {
 
 ### 3.4 全部豁免 / 全部取消
 
-- 按钮与右键菜单均可触发。
+- 按钮与右键菜单均可触发。搜索期间只操作**可见行**（被搜索隐藏的行保持原状），按钮与右键菜单的标签随之改为“豁免全部结果 / 取消全部结果”，状态栏提示改为“所有搜索结果待豁免 / 待移除豁免”；无可见行时两个按钮禁用。计数“已豁免 n / m”始终为全局值。（用户 2026-10-20 决定）
 - 全部勾选后若为脏，状态栏"所有 AppContainer 待豁免。点击『保存修改』以提交。"；全部取消对应"所有 AppContainer 待移除豁免。…"。
 
 ### 3.5 保存
@@ -116,9 +116,9 @@ struct AppContainer {
 
 | 交互 | 行为 |
 | --- | --- |
-| 点击列头 | 按该列排序；再次点击同列切换升/降序；比较为**序数**比较（`Ordinal`）；排序后滚动到首个选中行 |
+| 点击列头 | 同一列依次为升序 → 降序 → 不排序（有搜索词时按相关度，否则恢复枚举顺序）；点另一列从升序开始；初始按显示名称升序（同原工具）；比较为**序数**比较（`Ordinal`）；排序后滚动到首个选中行。原工具只在升降之间切换，三态为用户要求的改动 |
 | 多选 | 原工具支持（`FullRowSelect` + 多选）；reactor 无选中集合回调，自建选中模型，见 §6.2 |
-| `Ctrl+A`（焦点在列表） | 全选 |
+| `Ctrl+A`（焦点在列表） | 全选当前可见（筛选后）的行 |
 | `Ctrl+C` / 右键"复制选中行" | 每行：`LoopbackExempt` 或 `LoopbackBlocked` + 7 列，用 `\t` 分隔；选中多于一行时每行以 `\r\n` 结尾，只有一行时不加换行 |
 | 右键"复制选中列" | 取右键所在列，复制每个选中行该列的值，每行以换行结尾 |
 | 右键菜单 | 复制选中行、复制选中列、分隔线、全部取消、全部豁免 |
@@ -171,38 +171,41 @@ struct AppContainer {
 ### 4.2 布局
 
 ```text
-┌──────────────────────────────────────────────────────────────────────────┐
-│ AppContainer 回环豁免工具                                    ─  □  ✕     │
-├──────────────────────────────────────────────────────────────────────────┤
-│ ⓘ 出于安全与可靠性考虑，Windows 禁止 UWP/"沉浸式"应用向本机发送网络流量。│  InfoBar(信息, 不可关闭)
-│   本工具可为调试目的解除此限制。                         [了解更多]       │
-├──────────────────────────────────────────────────────────────────────────┤
-│ [⟳ 刷新] │ [☑ 全部豁免] [☐ 全部取消] │ [💾 保存修改]           12/248   │  CommandBar + 计数
-├──┬──────────────┬──────────────┬──────────┬─────────┬────────┬──────┬────┤
-│☐ │显示名称 ▲    │描述          │包        │AC 名称  │AC SID  │用户  │文件│  列头(可点击排序)
-├──┼──────────────┼──────────────┼──────────┼─────────┼────────┼──────┼────┤
-│☑ │1Password     │Protect and…  │Agilebit… │Agilebi… │S-1-15… │a6320 │(无)│  当前用户行高亮
-│☐ │@{Microsoft.… │@{Microsoft.… │Microsoft…│Microso… │S-1-15… │NT AU…│(无)│
-│  │  …                                                                    │  ListView(虚拟化)
-├──┴───────────────────────────────────────────────────────────────────────┤
-│ 已于 22:09:12 刷新 AppContainer 信息。                                    │  状态栏
-└──────────────────────────────────────────────────────────────────────────┘
+┌ AppContainer 回环豁免工具 ─────────────────────────────── ─ □ ✕ ┐
+│  ┌ ⓘ 说明…                                    了解更多 ┐      │
+│  └─────────────────────────────────────────────────────┘      │
+│  [🔍 搜索应用       ]                 [⟳ 刷新] [☑ 全部豁免] [☐ 全部取消] [💾 保存修改] │
+│  ╭ ☐ │显示名称 ▲│描述│包│AC 名称│AC SID│用户│文件 ───────╮      │
+│  │ ☑  row …                                            │      │
+│  ╰─────────────────────────────────────────────────────╯      │
+│  已于 9:19:18 刷新 AppContainer 信息。                         │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+页面四边统一留白 24 DIP；说明、工具栏、表格卡片和状态文字左右对齐。各区间距统一
+`SECTION_SPACING = 12` DIP，工具栏按钮间距 8 DIP。搜索框宽 280 DIP、靠左；窗口宽度小于 900 DIP 时操作按钮移到下一行并靠右（reactor 无法测量文字，900 按最宽的英文按钮约 544 DIP + 搜索框 + 间距 + 页边距估算）。640 DIP 最小窗口下四个按钮仍可排在一行。计数移到状态栏右侧，避免工具栏在默认 960 DIP 宽度下换行。
 
 | 区域 | reactor 控件 | 说明 |
 | --- | --- | --- |
 | 说明 | 仿 Informational `InfoBar` 的 `Border`（CardBackground/CardStroke、圆角 4）内一行 `Grid`：状态圆图标（`FontIcon` F136+F13F）+ 自动换行 `TextBlock` + 右侧 `HyperlinkButton` | 替代原工具的 Label + LinkLabel；a29e064 的 `InfoBar` 没有 Content/ActionButton，链接放不进同一行，故自绘 |
-| 工具栏 | `CommandBar` + `AppBarButton`（`SymbolIcon`: Refresh / SelectAll / ClearSelection / Save）+ `AppBarSeparator` | 保存按钮使用标准样式（a29e064 的 `AppBarButton` 无 style 方法，`src/generated_declarations.rs:6098–6136`）；禁用规则见 §3 |
-| 计数 | `TextBlock` | "已豁免 n / 共 m"（已定保留）。n 按当前勾选计算，脏时同步变化 |
-| 表头 | `Grid` 一行，每列一个无边框 `Button`，排序列显示 ▲/▼ | reactor 无 DataGrid，用固定列宽 `Grid` 自绘 |
-| 列表 | `ListView` + `DataItem`（WinUI 原生容器虚拟化），行内容为与表头同列宽的 `Grid`：`CheckBox` + 7 个 `TextBlock`（单行、尾部省略、`tooltip` 显示全文） | 保留默认 ItemsStackPanel，有限高度的 Grid/仅水平滚动的 ScrollViewer 不破坏纵向虚拟化；DataItem 内容由 reactor 预建，容器仍由 WinUI 按需实现 |
-| 状态栏 | 底部 `Border` + `TextBlock`；刷新中显示 `ProgressRing`（小号） | |
-| 右键菜单 | 行 Border 右键事件后调用 Win32 `TrackPopupMenuEx` | 项目见 §3.6；a29e064 运行时拒绝 Border.menu（`src/ir.rs:166–173`），故原生弹出菜单由 ui/native.rs 管理 |
+| 工具栏 | 左侧 `AutoSuggestBox`（查询图标、无建议项），右侧四个 `Button`，内容为 `SymbolIcon` + 文字（Refresh / SelectAll / ClearSelection / Save） | 前三个 `ButtonStyle::Default`，保存 `ButtonStyle::Accent`；独立 Grid 行，不遮盖表头；禁用规则见 §4.3 |
+| 计数 | 状态栏右侧 `TextBlock`，`toolbar.counter` 六语言文案；搜索时追加“· 找到 n 项” | “已豁免 n / m”；n 按当前勾选计算，脏时同步变化 |
+| 表格卡片/表头 | `Border`（CardBackground / CardStroke、1 DIP 边线、圆角 8）包含表头和列表；表头 `Grid` 的 `Button` 右侧显示 10 DIP 的 Segoe Fluent 排序字形（升序 F0AD、降序 F0AE，同 WinUI.TableView，`TextSecondary`），右侧 1 DIP 分隔线 | 表头固定不参与纵向滚动；与行共用水平 ScrollViewer。表头贴住卡片顶边并做 7 DIP 上圆角（Border 不裁剪子元素）；底部内缩 4 DIP 避免末行背景越过圆角；行间为 1 DIP DividerStroke |
+| 列表 | `ListView` + `DataItem`（WinUI 原生容器虚拟化），行内容为与表头共用组件状态列宽的 `Grid`：`CheckBox` + 7 个 `TextBlock`（单行、尾部省略、`tooltip` 显示全文） | 保留默认 ItemsStackPanel，有限高度的 Grid/仅水平滚动的 ScrollViewer 不破坏纵向虚拟化；DataItem 内容由 reactor 预建，容器仍由 WinUI 按需实现 |
+| 状态栏 | 底部 `TextBlock`；刷新中显示 `ProgressRing`（小号） | 使用页面统一边距，无额外内缩 |
+| 右键菜单 | `AppContext::show_menu_at(ScreenPoint, Menu)`，WinUI MenuFlyout transient XAML host | `App::run_with` 创建 AppContext，经 Startup 传入组件（仅 UI 线程）；菜单回调发送组件消息；指针窗口 DIP 经窗口 DPI 和 ClientToScreen 转为物理屏幕像素；顺序见 §3.6 |
 | 确认/错误/孤儿 | `ContentDialog` | §4.4 |
 
-实现核对（a29e064）：`src/generated_declarations.rs:3118–3201` 的 ListView 只有 DataItem items，VirtualSource 仅见于 ItemsRepeater（`:4478`）。`src/native/winui/objects.rs:107–175` 直接创建 WinUI ListView，设置 ItemTemplate 而不替换默认 ItemsPanel；`:627–639`（relations.rs）用 ContentPresenter 展示 DataItem 内容。据 [WinUI 官方性能说明](https://learn.microsoft.com/windows/apps/develop/performance/optimize-gridview-and-listview)，保留虚拟化容器面板即可保留 UI 虚拟化。因此选用 ListView，保留 §6.2 的单选焦点机制。固定列宽总和超过初始窗口宽度时，表头和列表一起水平滚动。
+实现核对（a29e064）：`src/generated_declarations.rs:3118–3201` 的 ListView 只有 DataItem items，VirtualSource 仅见于 ItemsRepeater（`:4478`）。`src/native/winui/objects.rs:107–175` 直接创建 WinUI ListView，设置 ItemTemplate 而不替换默认 ItemsPanel；`:627–639`（relations.rs）用 ContentPresenter 展示 DataItem 内容。据 [WinUI 官方性能说明](https://learn.microsoft.com/windows/apps/develop/performance/optimize-gridview-and-listview)，保留虚拟化容器面板即可保留 UI 虚拟化。因此选用 ListView；revision 2 使用 fork 的容器样式与滚动引用，原生选择模式改为 None（§6.2）。列宽总和超过窗口宽度时，表头和列表一起水平滚动。
 
-列宽（DIP，初始值）：勾选 40、显示名称 220、描述 220、包 200、AC 名称 160、AC SID 140、用户 140、文件 *（剩余）。
+列宽（DIP，初始值）：勾选 40（固定）、显示名称 220、描述 220、包 200、AC 名称 160、AC SID 140、用户 140、文件 *（剩余，最小 48）。
+`ui/table/` 是独立的 reactor 嵌套组件：`component::<TableView>("table", Input)`。Input 为 Clone + PartialEq，含七列的本地化标题/初始宽度/最小宽度/sortable/resizable、`Rc<Vec<Rc<Row>>>`（SID 字符串 key、checkbox、七个 cell 文本、highlight）、Sort、选中 key 集合、焦点 key、键盘焦点来源、enabled，以及 on_sort/on_toggle/on_pointer/on_key/on_context_menu/on_focus 回调。viewport_width、generation、外部 focus_ref 负责布局、原生列表重建和对话框后的焦点恢复。Callback 使用 reactor 的回调身份比较。父组件仅连接业务状态；TableView 保留列宽和拖动，行组件保留 hover/focus 外观，引用与计时器跟随组件生命周期。缩放不重绘 MainWindow。
+
+表头总高 32 DIP（含底部 1 DIP 分隔线），文字 SemiBold，背景 SubtleFillSecondary；行高 40 DIP（含分隔线），文本单元格左右 padding 12 DIP。表头每格右侧和行间均用 1 DIP DividerStroke。容器 padding=0、min_height=40、HorizontalContentAlignment=Stretch，经 fork 的 ItemContainerStyle 应用于当前及后续虚拟化容器；不再补偿默认 16 DIP inset。卡片使用 CardBackground/CardStroke、1 DIP 边框和 8 DIP 圆角，无不透明行带。
+
+悬停使用 SubtleFillSecondary；选区使用 SubtleFillTertiary，左侧 3×16 DIP Accent 胶囊（radius 1.5）。当前用户使用 Users 单元格内 TextSecondary 小圆点，和选区同时显示，不改变复制文本；highlight 沿用既有 Row::highlights_user 规则。实际位于行内且来自键盘的焦点显示 2 DIP PrimaryText 边框，离开行后移除。资源由 WinUI 随亮/暗色及高对比度解析。
+
+内部列分隔线两侧各 4 DIP 组成 8 DIP 透明 grip（最后一列在右缘内保留完整 8 DIP），使用 fork 的 SizeWestEast cursor；与排序按钮互为兄弟。Border 捕获指针，按起点计算宽度；释放/失去捕获提交，重复提交无副作用，不触发排序。几何仍在 model/columns.rs 并有单元测试：最小 48 DIP，可配置更大最小值，最后一列填充余宽。260 行、20 次 debug recording-adapter 样本：表头约 11.1 ms/次，全行宽度提交约 20.9 ms/次（均不含原生 XAML 布局），全行更新超过 16.7 ms 帧预算，因此保留表头实时、行在释放/失去捕获后更新。真实 pointer 流畅度由用户手测。
 
 ### 4.3 状态与按钮可用性
 
@@ -232,7 +235,9 @@ struct AppContainer {
 | --- | --- |
 | `F5` | 刷新（原工具为 `Alt+R` 助记符；a29e064 未暴露 AccessKey（所有生成声明及 visual_methods 中均无该方法），根 Border 显式处理 Alt+R/A/N/S/L，不显示访问键提示） |
 | `Ctrl+S` | 保存（新增，替代 `Alt+S` 助记符） |
-| `Ctrl+A` | 列表全选 |
+| `Ctrl+F` | 聚焦搜索框 |
+| `Esc`（搜索框内） | 清空搜索词，保留搜索框焦点 |
+| `Ctrl+A` | 列表内全选筛选后的行；搜索框内保留原生文本全选 |
 | `Ctrl+C` | 复制选中行 |
 | `Space` | 切换焦点行勾选（列表 Border 处理；CheckBox 焦点保留原生 Space 行为） |
 | `F1` / `Alt+L` | 了解更多 |
@@ -253,9 +258,13 @@ struct AppContainer {
 | 需求 | 0.100.0 | master `a29e064` | 处理 |
 | --- | --- | --- | --- |
 | 运行时依赖 | 框架依赖：要求已安装 **Windows App Runtime 2.4**（`Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe`），缺失时弹英文 MessageBox 引导下载 | 同左；另有 `windows-reactor-setup`（crates.io 0.100.0）支持自包含部署 | 见 §8.1 与 §9-1 |
-| 表格 | 无 DataGrid | 同左（ListView 无 VirtualSource，保留 WinUI 原生容器虚拟化，证据见 §4.2） | 自绘表头 + 固定列宽；不支持拖动调列宽 |
+| 表格 | 无 DataGrid | 同左（保留原生 ListView 容器虚拟化） | 应用内可复用 TableView，业务选择在父组件（§4.2） |
+| 主题笔刷 | token 不足 | 同左 | **fork 已解决**：[vendor/windows-rs](../vendor/windows-rs) 的 ThemeBrush 增加八个 Fluent token（§6.0） |
+| 分隔线 cursor | 无 | 无 | **fork 已解决**：cursor(CursorShape) 经 IUIElementProtected QI 设置 ProtectedCursor；Border 原生运行测试通过。沿用 WinUI 控件/弹出层 cursor 优先规则 |
+| ListView 容器外观 | 无 | 无 | **fork 已解决**：item_container(ItemContainerOptions)，控制 padding/min-height/stretch 并抑制自带 chrome |
+| 滚动到焦点行 | 无公开 API | 无公开 API | **fork 已解决**：ElementRef<ListView>::request_scroll_into_view[_result](index, alignment)，已删除自身 UIA 兼容代码 |
 | 多选 | `ListView` 有 `Multiple`/`Extended` 模式，但 `on_selection_changed` 只回传 `Option<usize>` | 同左；但 `Border` 新增带修饰键的指针与键盘事件 | 拿不到完整选中集合，上游无相关 issue（2026-10-19 检索）。自建选中模型，见 §6.2 |
-| 右键菜单 | `MenuExt::menu`，回调参数为菜单项文本 | `menu`，回调参数为 `Key` | 可用；"复制选中列"需要知道右键所在列：行 Border 的局部 x 坐标按固定列宽定位列；reactor 的 menu 只允许 Button/DropDownButton/MenuBarItem（`src/ir.rs:166–173`），不支持 Border 上的右键菜单，使用 Win32 popup menu |
+| 右键菜单 | `MenuExt::menu`，回调参数为菜单项文本 | `menu`，回调参数为 `Key` | 可用；"复制选中列"需要知道右键所在列：行 Border 的局部 x 坐标按当前列宽定位列；Border.menu 仍不可用，改用公开 AppContext::show_menu_at（native/app/mod.rs:123）的 WinUI MenuFlyout；无需 Win32 popup menu |
 | 剪贴板 | 无 | 无 | 直接用 Win32 剪贴板 API（`OpenClipboard`/`SetClipboardData(CF_UNICODETEXT)`） |
 | 关闭拦截 | 只有 `WindowRef::request_close`，无 closing 回调 | 仍无 closing 回调；但新增 `ComponentContext::run_window`，在 UI 线程把窗口 HWND（`IWindowNative::WindowHandle`）交给回调，属公开的原生集成入口 | 用 `run_window` 取 HWND 后 `SetWindowSubclass` 拦截 `WM_CLOSE`，见 §6.1 |
 | 单实例置前 | 无 | 无 | 互斥量 + 共享内存中的 HWND + `SetForegroundWindow`，与 UI 框架无关 |
@@ -263,15 +272,21 @@ struct AppContainer {
 | 对话框 | `ContentDialog` | 同左 | 可用 |
 | 快捷键 | `KeyAccelerators` | 同左（D/O/S/M 键与组合修饰键缺失，见上游 #5087 第 14 项） | `Ctrl+S` 等使用根 Border 的 `on_preview_key_down`（`:2476`，generated_declarations.rs），KeyEventInfo 提供完整 VirtualKey 与修饰键（declaration.rs:1228–1315）；XAML 键盘消息不经过顶层 HWND，子类过程只拦截关闭 |
 
-**版本选择**：关闭拦截依赖 master 才有的 `run_window`，因此依赖 `windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "<固定提交>" }`，下一个 crates.io 版本发布后改回版本号。不用第三方转发的 `windows-reactor-pre`（描述为"为 guinea 项目转发"，非官方）。
+**版本选择**：使用子模块 [vendor/windows-rs](../vendor/windows-rs) 的 nyanpasu 分支（基于 a29e064）。windows-reactor/windows 均为 path 依赖，Cargo.lock 不再引用旧 git source。子 workspace exclude fork；cargo metadata 的 workspace_members 只有 enable-loopback。CI/release 使用 submodules: true；首次 clone --recursive，已有 checkout 用 git submodule update --init。fork 只有下列四个本地提交，未推送，待负责人 review/push 后随子模块指针发布。
 
-上游相关 issue（2026-10-19）：#5087（open，原生 UI 契约缺口，含上下文菜单、快捷键、窗口集成、ListView 容器样式；不含多选）；#4901（closed，窗口关闭与应用退出分离）。
+### 6.0 Fork 补丁与验证（2026-10-20）
 
-### 6.0 实施补充（a29e064，2026-10-20）
+| 问题 / API | 本地提交 | 上游参考 |
+| --- | --- | --- |
+| ThemeBrush 缺少表格 token；增加 SubtleFillSecondary/Tertiary、ControlFillDefault/Secondary、DividerStroke、ControlStrokeDefault、TextSecondary、AccentFillSecondary，映射真实 WinUI resource key | 993d79e | [#5087 第 6 项](https://github.com/microsoft/windows-rs/issues/5087)（现已 closed） |
+| 无元素 cursor；增加 CursorShape 和共享 cursor 属性，经 QI 设置/清除 ProtectedCursor | 7aacd86 | [#4988](https://github.com/microsoft/windows-rs/issues/4988)（open；上游提醒部分控件自行管理 cursor，本补丁实测 Border） |
+| ListViewItem 默认 inset/高度/对齐/chrome 无法配置；增加 ItemContainerOptions + ListView::item_container，用 XamlReader 加载 ItemContainerStyle 与可选 content-only template | 6ac31d0 | [#5087 第 8 项](https://github.com/microsoft/windows-rs/issues/5087) |
+| 无公开 ScrollIntoView；增加 ListView 引用与 index/alignment imperative 请求、异步 acceptance 结果，越界返回 Ok(false)，过期绑定返回 Unavailable | ab90737 | [#5087 第 11/17 项](https://github.com/microsoft/windows-rs/issues/5087)、[#5146](https://github.com/microsoft/windows-rs/issues/5146)（open，重排后原生崩溃报告） |
 
-- **排序容器重建**：UIA 在实现并选择中部行后点击表头，复现原地重排的 `E_INVALIDARG`；该版本的容器重排走 `src/native/winui/relations.rs:360–393` 的 ReplaceAll/RemoveAt/InsertAt。应用排序时更换 ListView 的 key，保留模型中的 SID 选区；下一 UI 帧再恢复 selected_index，避免在空 Items 集合上设非空索引。
-- **滚动到选中行**：`ListView` 没有 ElementRef/ScrollIntoView（`src/generated_declarations.rs:3118–3201`）；`ElementRef::request_focus_result` 只提供 Focus（`src/reference.rs:129–147`），未实现的行 Focus 返回 false。ui/native.rs 在 reactor 后台任务的独立 COM MTA 中，对本窗口的 `apps` 元素调用 UIA ItemContainer / VirtualizedItem.Realize / ScrollItem.ScrollIntoView，完成后回 UI 线程用 ElementRef 恢复焦点。任务可取消，且用列表代次及当前 SID 索引校验结果，避免陈旧焦点。此路径已通过锁屏 UIA 验证：选择第 131 行后倒序排序，单选焦点仍在同一 SID 且 IsOffscreen=false。遵循 [UIA 线程规则](https://learn.microsoft.com/windows/win32/winauto/uiauto-threading)；不在 UI 线程调用自身的 UIA provider。
-- **上下文菜单**：MenuExt 的公开 trait 是通用的，但 `src/ir.rs:166–173` 仅允许 Button/DropDownButton/MenuBarItem；Border.menu 实际运行报 InvalidAttachment(Border)。行右键使用原生弹出菜单，先提交新选区的 UI 帧，再显示菜单；列由行内 x 坐标与固定列宽计算。
+- **生成与检查**：修改 schema/generator/手写实现后在 fork 根执行 cargo run -p tool-reactor；没有手改 generated 文件。更新 public-api.txt。303 个 reactor unit tests 通过；3 个原生测试分别单独执行通过：Border cursor set/update/clear，真实容器 padding/min-height/stretch/style removal，滚动到第 81 行后新实现容器的样式与 SelectionMode::None 下行 focus。原生测试只启动自己的 WinUI 窗口并调用程序接口，无桌面鼠标/键盘注入。reactor all-targets/all-features clippy -D warnings 通过。
+- **排序容器重建**：保留 revision 1 的 ListView 换 key 方案和 SID 选区；未改 fork 的 collection reorder，不保证修复 #5146 的任意原地重排。重建后在 effect 中请求滚动，再等待布局帧恢复行焦点；不再设置 selected_index。
+- **滚动与焦点**：ScrollIntoView 接受请求不等于布局完成。应用校验 generation + focused key，再于后续帧发出 ElementRef focus，取消过期计时器。checkbox 焦点不被恢复逻辑抢走；指针选区变化不安排延迟 focus，以免抢走右键菜单。ui/native.rs 的 reveal、COM MTA/UIA 后台任务及仅该路径使用的 Cargo features 已删除。
+- **上下文菜单**：继续使用 AppContext::show_menu_at 的 WinUI MenuFlyout。TableView 用 run_window + GetDpiForWindow/ClientToScreen 将事件坐标转为物理屏幕点，回传 key/column/ScreenPoint。父组件先提交选区帧，再弹菜单；列命中使用已提交行宽，不读取全局鼠标位置。MainWindow 销毁时仍通过 AppContext 显式退出。
 
 ### 6.1 退出前确认
 
@@ -284,22 +299,23 @@ struct AppContainer {
 
 master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifiers`：Shift/Control，及左右键）与 `on_preview_key_down`/`on_key_up`（`KeyEventInfo` 含按键与修饰键），足以在应用内实现多选，不必改 reactor：
 
-1. `ListView` 设为 `Single`，WinUI 的单选索引作为**焦点行**（负责键盘焦点与滚动到可见），由 `on_selection_changed` 回报。
+1. `ListView` 设为 `None`，保留原生 ListViewItem、虚拟化和键盘焦点；原生测试确认该模式下行可聚焦。父组件保留 Selection.focused，滚动通过 fork 的 ElementRef<ListView>，不再使用原生单选索引。
 2. 应用自己维护 `selected: BTreeSet<Sid>` 与 `anchor`。每行包一层 `Border`，`on_pointer_pressed`：
    - 无修饰键左键：选中集合 = {该行}，`anchor` = 该行；
    - `Ctrl`：切换该行；
    - `Shift`：选中 `anchor`..该行（按当前排序后的顺序）；
    - 右键：该行不在集合内时先改为单选该行（与 Windows 资源管理器一致），并记录右键所在列供"复制选中列"使用。
-3. 列表外层 `Border` 的 `on_preview_key_down`：`Shift+↑/↓` 扩展选区；`Ctrl+A` 全选；`Ctrl+C` 复制；单独 `↑/↓` 也由纯 Selection 模型移动焦点并同步 WinUI selected_index；Space 在焦点行切换豁免，焦点在 CheckBox 时保留其原生 Space 行为。
-4. 选中行用 `CardBackground` 填充、`Accent` 左边线；当前用户行用 `CardBackground` 填充、`CardStroke` 细边线。文字始终用 `PrimaryText`，避免把描边色当填充色导致高对比度下文字与背景同色。行的 `SolidBackground` 不透明底层遮住 WinUI 单选填充。a29e064 的 ThemeBrush 没有选择色（`src/declaration.rs:217–239`），ListView 也没有容器样式或 ResourceOverrides 方法（`src/generated_declarations.rs:3118–3201`）；保留 WinUI 单选焦点框，应用选区在行内容上覆盖其底色。主题资源随亮/暗色及高对比度解析，外观留待可见桌面核对。
-5. 选中集合按 SID 保存，刷新与排序后仍然有效；刷新后不存在的 SID 自动移出。
+3. 列表外层 `Border` 的 `on_preview_key_down`：`Shift+↑/↓` 扩展选区；`Ctrl+A` 全选；`Ctrl+C` 复制；单独 `↑/↓` 也由纯 Selection 模型移动焦点，由 TableView 请求滚动并恢复实际行焦点；Space 在焦点行切换豁免，焦点在 CheckBox 时保留其原生 Space 行为。
+4. TableRow 绘制选择/hover/当前用户/键盘焦点，见 §4.2。ItemContainerStyle 去掉默认 inset/chrome，无需 SolidBackground 遮罩。CheckBox 焦点只更新逻辑 focused，不清除多选，原生 Space 仍交给 CheckBox。
+5. 选中集合按 SID 保存，刷新与排序后仍然有效；刷新后不存在的 SID、被搜索隐藏的 SID 自动移出（包括 anchor/focused）；清空搜索不会恢复已移出的选区。
 6. 纯逻辑（点击/修饰键/区间计算）放在 `model`，用普通值测试。
 
-验证记录（2026-10-20）：锁屏下 UIA Selection/Toggle/Invoke 可用，但无法注入真实指针。按负责人决定继续使用冒泡 PointerPressed（行 Border 先于父 ListViewItem；CheckBox 消费自身点击）；实际修饰键、右键及外观检查列于 `docs/manual-smoke.md`。若实际行指针行为不成立，退路是给 reactor 打补丁（`[patch]` 指向我们 fork 的 windows-rs 固定提交），为 `ListView` 增加选中集合回调，并同时向上游提 PR。
+验证记录（2026-10-20，revision 2）：recording adapter 覆盖嵌套组件的 Ctrl 多选、checkbox 不清除选区、键盘路由、hover/focus chrome、sort 后 scroll index 和 260 行缩放。桌面仅启动 app 截图及运行无注入的 fork 原生测试，未点击/调用 Save，未做 UIA Select/Toggle/Invoke。默认/最大化截图为 target/ui-rev2-default.png 和 target/ui-rev2-max.png，已检查列对齐、32/40 DIP 高度与最后一列填充。真实修饰键、右键位置、pointer capture、主题和键盘流列于 docs/manual-smoke.md，待用户手测。
 
 ## 7. 测试
 
-- `model`：脏检测、全选/全不选的状态文案、排序（序数、升降切换）、复制行/列格式（单行无换行、多行 `\r\n`）、`-allow`/`-deny` 过滤规则、参数解析（含 `-allow` 优先于 `-all`、NAME 含空格）、按 SID 合并用户、占位文案与空串差别、孤儿检测。全部用普通值测试。
+- 格式检查：cargo fmt -p enable-loopback -- --check。cargo fmt --all 会沿 path dependency 进入 fork 全部 workspace targets，在 Windows 超过命令行长度（os error 206）；CI 因此限定子项目包，fork 的 reactor/tool-reactor 单独检查。
+- `model`：脏检测、全选/全不选的状态文案、排序（序数、升序 → 降序 → 不排序三态）、复制行/列格式（单行无换行、多行 `\r\n`）、`-allow`/`-deny` 过滤规则、参数解析（含 `-allow` 优先于 `-all`、NAME 含空格）、按 SID 合并用户、占位文案与空串差别、孤儿检测。全部用普通值测试。
 - `netiso`：真实 API 只做冒烟（读取枚举与豁免名单不需提权，可在 CI 的 Windows runner 跑只读测试）；写入不在 CI 做。
 - i18n：所有语言键集合一致的测试。
 - 手动冒烟：提权/非提权保存、孤儿记录（可用 `CheckNetIsolation LoopbackExempt -a -p=<不存在的 SID>` 构造）、防火墙服务停止时的 1753 提示、`-registry`、`manual`、单实例置前、命令行各模式、各语言显示。
@@ -339,3 +355,62 @@ master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifi
 已定（2026-10-19）：submodule；修正保存缺陷；链接到微软文档；标题本地化；保留计数；不做 x86；runtime 由用户自行安装（框架依赖，主仓检测并本地化引导，见 §8.2）；接受 git rev 依赖 windows-rs master；多选自建（§6.2）；图标新绘、Fluent、SVG。
 
 1. 图标图形：待从 codex 概念图中选定。
+
+
+## 10. 搜索
+
+`model/search.rs` 是纯匹配器。加载/替换行时，从七列原始值一次性生成 Unicode
+lowercase 缓存，不把本地化占位文案放进索引。查询按 Unicode 空白分词并转小写；
+所有 token 都必须在至少一列命中。每个 token 取各列“权重 × 质量”的最大值，行分数
+为 token 分数之和。权重是具名常量：显示名称 10、AC 名称 6、包 5、描述 3、用户 2、
+文件 1、SID 1。质量：整字段相等 3，前缀 2，词首 1.5，其他子串 1；词首只认前一个
+字符为空格、`.`、`_`、`-`、`\`、`/`、`{`。扫描所有命中位置以取最高质量。
+内部用半分整数（质量 6/4/3/2）保持精确排序。null 不匹配，存在但为空的字段也不会
+匹配非空 token；空白查询显示全部行。
+
+有活动排序列时保持现有排序；三态清除排序后，按相关度降序，再按枚举顺序。
+筛选只改变可见索引，不改变勾选与保存基线。选区会裁掉隐藏 SID，列表 Ctrl+A、范围
+选择与复制按可见顺序；复制只遍历可见选中行。批量“全部豁免 / 全部取消”只作用于可见行，
+搜索时标签改为“豁免全部结果 / 取消全部结果”（见 §3.4）；“已豁免 n / m”始终使用全部行；结果数只在查询有效时追加。刷新保留搜索词并重建
+缓存。六语言均有搜索 placeholder、结果数和居中的空状态；TableView 的可选
+`empty_text` 相当于 EmptyTemplate，表头仍保留。搜索框内 Esc 清空，Ctrl+F 聚焦；
+搜索输入期间禁止列表重建后的延迟焦点恢复抢走搜索焦点。无需修改 reactor fork。
+
+### Release 基准与 rayon 决定（2026-10-20）
+
+运行前设置 `CARGO_INCREMENTAL=0`，再执行
+`cargo bench -p enable-loopback --bench search --config 'build.rustc-wrapper=""'`。
+使用独立 `harness=false` 基准，
+`benches/search.rs` 直接调用生产匹配器。生成器模拟应用名、资源描述、包全名、AC
+名称、长 SID、用户及 WindowsApps 文件路径的长度和缺失比例，含 Unicode 字段；
+没有保存本机 AppContainer 数据。另测 3k，覆盖“几千”行的决策边界。
+
+Intel Core i9-14900KF，24 核 / 32 逻辑处理器，rayon 默认 32 线程。预计算字段与
+线程池初始化在计时外；每个变体预热 100 ms，随后 7 个至少 100 ms 的批次，报告
+各批次每次耗时的中位数。包含 query 分词、小写、匹配评分、结果收集与相关度排序；
+不含字段缓存构建及 XAML 布局/渲染。每个查询先断言顺序与并行结果完全相同。
+两列耗时均为 **ms / 次**：
+
+| 行数 | 查询 | 命中 | sequential | rayon |
+| ---: | --- | ---: | ---: | ---: |
+| 260 | `store` | 44 | 0.033553 | 0.045023 |
+| 260 | `microsoft alice` | 260 | 0.058723 | 0.082389 |
+| 260 | `windows store 3500123456` | 44 | 0.071836 | 0.049527 |
+| 1,000 | `store` | 167 | 0.126442 | 0.082279 |
+| 1,000 | `microsoft alice` | 1,000 | 0.225575 | 0.207805 |
+| 1,000 | `windows store 3500123456` | 167 | 0.276171 | 0.086546 |
+| 3,000 | `store` | 500 | 0.378526 | 0.173700 |
+| 3,000 | `microsoft alice` | 3,000 | 0.672888 | 0.478560 |
+| 3,000 | `windows store 3500123456` | 500 | 0.824748 | 0.218122 |
+| 10,000 | `store` | 1,667 | 1.261901 | 0.392938 |
+| 10,000 | `microsoft alice` | 10,000 | 2.316727 | 0.901483 |
+| 10,000 | `windows store 3500123456` | 1,667 | 2.776178 | 0.469858 |
+| 100,000 | `store` | 16,667 | 13.188038 | 1.850985 |
+| 100,000 | `microsoft alice` | 100,000 | 24.202060 | 4.604723 |
+| 100,000 | `windows store 3500123456` | 16,667 | 28.473225 | 2.908517 |
+
+**决定：生产搜索保持 sequential；rayon 仅为 dev-dependency，用于持续比较。**
+260 行最慢 0.071836 ms，1k 最慢 0.276171 ms，3k 最慢 0.824748 ms，均远低于
+约 4 ms / keystroke 的阈值。rayon 在一些查询中明显胜出，但合理规模下顺序搜索
+没有慢到影响输入，因此不满足加入生产依赖的两个共同条件。10k / 100k 的并行收益
+不改变当前决策。若未来实际规模或端到端输入延迟显著变化，再用此基准复核。

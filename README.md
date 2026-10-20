@@ -1,8 +1,7 @@
 # enable-loopback
 
 A Windows AppContainer loopback exemption tool for clash-nyanpasu, built with
-Rust and WinUI 3. This stage is a localized UI skeleton; exemption operations
-are not implemented yet.
+Rust and WinUI 3. It provides a localized table, multi-selection, sorting, copy, and exemption editing.
 
 On Windows x64 or arm64, install the nightly Rust MSVC toolchain and Visual
 Studio C++ build tools (including the Windows SDK). The GUI requires Windows
@@ -30,13 +29,12 @@ to bypass it for these commands. Do not change the global configuration.
 `enableLoopback.exe [--lang CODE]` opens the GUI. Supported languages:
 `en`, `zh-cn`, `zh-tw`, `ja`, `ko`, `ru`; otherwise the system language is used,
 with English as the fallback. `manual` skips automatic refresh and `-registry`
-selects registry enumeration once those features are implemented.
+selects registry enumeration.
 
 CLI commands: `-all`, `-none`, `-allow NAME...`, `-deny NAME...`, and `?` for
 localized syntax. Commands ignore case; the leading `-` or `/` is optional.
 Names may contain spaces; `*` matches all. CLI dispatch does not initialize
-WinAppSDK or check its runtime. Stage 1 returns a typed unimplemented error
-(exit `-1`) for exemption commands; syntax exits `-10`.
+WinAppSDK or check its runtime. Exemption commands apply the requested configuration; syntax errors exit `-10`.
 
 The executable requests the highest available privilege level. Read the
 [design specification](docs/design.md) for the planned behavior and architecture.

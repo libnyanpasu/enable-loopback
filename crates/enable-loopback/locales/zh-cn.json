@@ -5,10 +5,18 @@
     "learn_more": "了解更多",
     "start_failed": "无法打开窗口。\n%{detail}"
   },
+  "search": {
+    "placeholder": "搜索应用",
+    "results": "找到 %{count} 项",
+    "empty": "未找到匹配的应用。"
+  },
   "toolbar": {
+    "counter": "已豁免 %{exempt} / %{total}",
     "refresh": "刷新",
     "exempt_all": "全部豁免",
     "exempt_none": "全部取消",
+    "exempt_results": "豁免全部结果",
+    "exempt_none_results": "取消全部结果",
     "save": "保存修改"
   },
   "status": {
@@ -16,6 +24,8 @@
     "dirty": "点击“保存修改”以提交。",
     "exempt_all": "所有 AppContainer 待豁免。点击“保存修改”以提交。",
     "exempt_none": "所有 AppContainer 待移除豁免。点击“保存修改”以提交。",
+    "exempt_results": "所有搜索结果待豁免。点击“保存修改”以提交。",
+    "exempt_none_results": "所有搜索结果待移除豁免。点击“保存修改”以提交。",
     "orphan_removal": "保存将移除 %{count} 条孤立记录。",
     "saved": "回环豁免配置已更新。",
     "not_saved_admin": "未保存。需要管理员权限。",

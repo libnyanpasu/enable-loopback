@@ -5,10 +5,18 @@
     "learn_more": "Learn more",
     "start_failed": "Unable to open the window.\n%{detail}"
   },
+  "search": {
+    "placeholder": "Search apps",
+    "results": "Found %{count} items",
+    "empty": "No apps match your search."
+  },
   "toolbar": {
+    "counter": "Exempt %{exempt} / %{total}",
     "refresh": "Refresh",
     "exempt_all": "Exempt all",
     "exempt_none": "Exempt none",
+    "exempt_results": "Exempt results",
+    "exempt_none_results": "Unexempt results",
     "save": "Save changes"
   },
   "status": {
@@ -16,6 +24,8 @@
     "dirty": "Click Save changes to commit.",
     "exempt_all": "All AppContainers are pending exemption. Click Save changes to commit.",
     "exempt_none": "All AppContainers are pending exemption removal. Click Save changes to commit.",
+    "exempt_results": "All search results are pending exemption. Click Save changes to commit.",
+    "exempt_none_results": "All search results are pending exemption removal. Click Save changes to commit.",
     "orphan_removal": "Saving will remove %{count} orphaned records.",
     "saved": "Loopback exemption configuration updated.",
     "not_saved_admin": "Changes not saved. Administrator privileges are required.",

@@ -1,6 +1,10 @@
 //! Pure rows, rendering, sorting, copy formats, save baselines and CLI filters (§3).
 
+mod columns;
+pub use columns::{CHECKBOX_WIDTH, ColumnWidths};
+
 mod selection;
+use crate::search::{Query, SearchFields};
 pub use selection::{Direction, Modifiers, PointerButton, Selection};
 
 use crate::{
@@ -13,6 +17,9 @@ use std::collections::BTreeSet;
 pub struct Row {
     pub app: AppContainer,
     pub checked: bool,
+    /// Enumeration position, restored when sorting is cleared.
+    pub source_index: usize,
+    searchable: SearchFields,
 }
 
 /// In display/copy order; the checkbox is separate and is never a sort column.
@@ -54,6 +61,24 @@ impl Placeholders {
 }
 
 impl Row {
+    fn new(app: AppContainer, source_index: usize) -> Self {
+        let searchable = SearchFields::new([
+            app.display_name.clone(),
+            app.description.clone(),
+            app.package_full_name.clone(),
+            app.name.clone(),
+            Some(app.sid.to_string()),
+            (!app.users.is_empty()).then(|| app.users.join("; ")),
+            (!app.binaries.is_empty()).then(|| app.binaries.join("; ")),
+        ]);
+        Self {
+            checked: app.exempt_at_last_check,
+            app,
+            source_index,
+            searchable,
+        }
+    }
+
     /// Render the values compared and copied by ListViewItemComparer/frmMain.
     /// Only null fields receive placeholders; present empty strings stay empty.
     pub fn columns(&self, placeholders: &Placeholders) -> [String; 7] {
@@ -94,40 +119,56 @@ impl Row {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Sort {
-    pub column: Column,
+    /// None uses search relevance, or enumeration order when the query is empty.
+    pub column: Option<Column>,
     pub ascending: bool,
 }
 
 impl Default for Sort {
+    /// The original tool starts sorted by display name, ascending.
     fn default() -> Self {
         Self {
-            column: Column::DisplayName,
+            column: Some(Column::DisplayName),
             ascending: true,
         }
     }
 }
 
 impl Sort {
-    /// Like ListViewItemComparer, another column keeps the previous direction.
+    /// Cycle ascending, descending, then enumeration order; another column starts ascending.
     pub fn click(&mut self, column: Column) {
-        if column == self.column {
-            self.ascending = !self.ascending;
-        }
-        self.column = column;
+        *self = match self.column {
+            Some(current) if current == column && self.ascending => Self {
+                column: Some(column),
+                ascending: false,
+            },
+            Some(current) if current == column => Self {
+                column: None,
+                ascending: true,
+            },
+            _ => Self {
+                column: Some(column),
+                ascending: true,
+            },
+        };
     }
 
     pub fn apply(&self, rows: &mut [Row], placeholders: &Placeholders) {
+        let Some(column) = self.column else {
+            rows.sort_by_key(|row| row.source_index);
+            return;
+        };
         // .NET Ordinal compares UTF-16 code units, not Rust's UTF-8 byte order.
         if self.ascending {
             rows.sort_by_cached_key(|row| {
-                row.columns(placeholders)[self.column as usize]
+                row.columns(placeholders)[column as usize]
                     .encode_utf16()
                     .collect::<Vec<_>>()
             });
         } else {
             rows.sort_by_cached_key(|row| {
                 std::cmp::Reverse(
-                    row.columns(placeholders)[self.column as usize]
+                    row.columns(placeholders)[column as usize]
                         .encode_utf16()
                         .collect::<Vec<_>>(),
                 )
@@ -154,6 +195,8 @@ pub struct Status {
 #[derive(Debug, Default)]
 pub struct ListState {
     pub rows: Vec<Row>,
+    pub query: String,
+    visible: Vec<usize>,
     pub orphans: Vec<Sid>,
     pub sort: Sort,
     /// Suppresses dirty notifications while refresh replaces rows (§3.3).
@@ -178,12 +221,10 @@ impl ListState {
     ) -> Self {
         let mut rows: Vec<_> = apps
             .into_iter()
-            .map(|mut app| {
+            .enumerate()
+            .map(|(source_index, mut app)| {
                 app.exempt_at_last_check = exempted.contains(&app.sid);
-                Row {
-                    checked: app.exempt_at_last_check,
-                    app,
-                }
+                Row::new(app, source_index)
             })
             .collect();
         // Exemption order is also the original orphan-prompt order.
@@ -194,8 +235,11 @@ impl ListState {
             .collect();
         let sort = Sort::default();
         sort.apply(&mut rows, placeholders);
+        let visible = (0..rows.len()).collect();
         Self {
             rows,
+            query: String::new(),
+            visible,
             orphans,
             sort,
             refreshing: false,
@@ -209,7 +253,8 @@ impl ListState {
         let idle = !self.refreshing && !self.saving;
         Availability {
             refresh: idle,
-            bulk: idle && self.loaded && !self.rows.is_empty(),
+            // Bulk actions apply to the visible (searched) rows only.
+            bulk: idle && self.loaded && !self.visible.is_empty(),
             save: idle && self.is_dirty(),
             list: idle && self.loaded,
         }
@@ -219,6 +264,7 @@ impl ListState {
         self.refreshing = true;
         self.loaded = false;
         self.rows.clear();
+        self.visible.clear();
         self.orphans.clear();
     }
 
@@ -238,9 +284,11 @@ impl ListState {
         placeholders: &Placeholders,
     ) {
         let sort = self.sort;
+        let query = self.query.clone();
         *self = Self::from_apps(apps, exempted, placeholders);
         self.sort = sort;
         self.sort.apply(&mut self.rows, placeholders);
+        self.set_query(query);
     }
 
     pub fn status_after_change(&self, change: Change) -> Status {
@@ -251,18 +299,21 @@ impl ListState {
             };
         }
         Status {
-            key: Some(match change {
-                Change::Checked => "status.dirty",
-                Change::ExemptAll => "status.exempt_all",
-                Change::ExemptNone => "status.exempt_none",
+            key: Some(match (change, self.search_active()) {
+                (Change::Checked, _) => "status.dirty",
+                (Change::ExemptAll, false) => "status.exempt_all",
+                (Change::ExemptNone, false) => "status.exempt_none",
+                (Change::ExemptAll, true) => "status.exempt_results",
+                (Change::ExemptNone, true) => "status.exempt_none_results",
             }),
             orphan_removal_count: self.orphans.len(),
         }
     }
 
+    /// Exempt or unexempt every visible row; rows hidden by the search keep their state.
     pub fn set_all(&mut self, checked: bool) -> Status {
-        for row in &mut self.rows {
-            row.checked = checked;
+        for &index in &self.visible {
+            self.rows[index].checked = checked;
         }
         self.status_after_change(if checked {
             Change::ExemptAll
@@ -310,21 +361,63 @@ impl ListState {
         )
     }
 
-    pub fn counter_text(&self) -> String {
-        let (checked, total) = self.counter();
-        format!("{checked} / {total}")
-    }
-
     pub fn sort_by(&mut self, column: Column, placeholders: &Placeholders) {
         self.sort.click(column);
         self.sort.apply(&mut self.rows, placeholders);
+        self.filter();
+    }
+
+    pub fn search_active(&self) -> bool {
+        !self.query.trim().is_empty()
+    }
+
+    pub fn set_query(&mut self, query: String) {
+        self.query = query;
+        self.filter();
+    }
+
+    fn filter(&mut self) {
+        let query = Query::new(&self.query);
+        let mut matches: Vec<_> = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, row)| query.score(&row.searchable).map(|score| (index, score)))
+            .collect();
+        if self.sort.column.is_none() {
+            matches.sort_unstable_by_key(|&(index, score)| {
+                (std::cmp::Reverse(score), self.rows[index].source_index)
+            });
+        }
+        self.visible = matches.into_iter().map(|(index, _)| index).collect();
+    }
+
+    pub fn visible_rows(&self) -> impl Iterator<Item = &Row> {
+        self.visible.iter().map(|&index| &self.rows[index])
+    }
+
+    pub fn visible_count(&self) -> usize {
+        self.visible.len()
+    }
+
+    /// Bulk action label keys: "all" without a search, "results" while searching.
+    pub fn bulk_label_keys(&self) -> (&'static str, &'static str) {
+        if self.search_active() {
+            ("toolbar.exempt_results", "toolbar.exempt_none_results")
+        } else {
+            ("toolbar.exempt_all", "toolbar.exempt_none")
+        }
     }
 }
 
 /// Iterate current display order, never BTreeSet SID order.
-pub fn copy_rows(rows: &[Row], selected: &BTreeSet<Sid>, placeholders: &Placeholders) -> String {
+pub fn copy_rows<'a>(
+    rows: impl IntoIterator<Item = &'a Row>,
+    selected: &BTreeSet<Sid>,
+    placeholders: &Placeholders,
+) -> String {
     let selected: Vec<_> = rows
-        .iter()
+        .into_iter()
         .filter(|row| selected.contains(&row.app.sid))
         .collect();
     let mut result = String::new();
@@ -342,14 +435,17 @@ pub fn copy_rows(rows: &[Row], selected: &BTreeSet<Sid>, placeholders: &Placehol
     result
 }
 
-pub fn copy_column(
-    rows: &[Row],
+pub fn copy_column<'a>(
+    rows: impl IntoIterator<Item = &'a Row>,
     selected: &BTreeSet<Sid>,
     column: Column,
     placeholders: &Placeholders,
 ) -> String {
     let mut result = String::new();
-    for row in rows.iter().filter(|row| selected.contains(&row.app.sid)) {
+    for row in rows
+        .into_iter()
+        .filter(|row| selected.contains(&row.app.sid))
+    {
         result.push_str(&row.columns(placeholders)[column as usize]);
         result.push_str("\r\n"); // StringBuilder.AppendLine uses Environment.NewLine on Windows.
     }
@@ -413,6 +509,82 @@ pub fn filter_exemptions(command: &Command, apps: &[AppContainer], exempted: &[S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn search_orders_by_relevance_only_when_unsorted_and_scopes_bulk_edits() {
+        let p = Placeholders::for_locale("en");
+        let mut first = app(1, Some("zStore"));
+        first.display_name = Some("zStore".into());
+        let mut second = app(2, Some("Store"));
+        second.display_name = Some("Store".into());
+        let mut third = app(3, Some("Store"));
+        third.display_name = Some("Store".into());
+        let mut hidden = app(4, None);
+        hidden.display_name = None;
+        let apps = vec![first, second, third, hidden];
+        let mut list = ListState::from_apps(apps.clone(), &[], &p);
+        let ids = |list: &ListState| {
+            list.visible_rows()
+                .map(|row| row.source_index)
+                .collect::<Vec<_>>()
+        };
+        list.set_query("store".into());
+        assert_eq!(ids(&list), [1, 2, 0]); // Active ascending column wins.
+        list.sort_by(Column::DisplayName, &p);
+        assert_eq!(ids(&list), [0, 1, 2]); // Active descending column wins.
+        list.sort_by(Column::DisplayName, &p);
+        assert_eq!(list.sort.column, None);
+        assert_eq!(ids(&list), [1, 2, 0]); // Score, then enumeration on ties.
+        // Bulk edits touch only the three matches; the hidden row keeps its state.
+        list.set_all(true);
+        assert_eq!(list.counter(), (3, 4));
+        assert_eq!(list.checked_sids().len(), 3);
+        let mut selection = Selection::default();
+        selection.select_all(
+            &list
+                .rows
+                .iter()
+                .map(|row| row.app.sid.clone())
+                .collect::<Vec<_>>(),
+        );
+        let visible = list
+            .visible_rows()
+            .map(|row| row.app.sid.clone())
+            .collect::<Vec<_>>();
+        selection.prune(&visible);
+        assert_eq!(selection.selected.len(), 3);
+        let copy = copy_rows(list.visible_rows(), &selection.selected, &p);
+        assert_eq!(copy.lines().count(), 3);
+        assert!(!copy.contains("S-1-15-2-4"));
+        list.set_query("No DisplayName".into());
+        assert_eq!(list.visible_count(), 0);
+        list.set_query("store".into());
+        list.begin_refresh();
+        assert_eq!(list.visible_count(), 0);
+        list.replace_apps(apps, &[], &p);
+        assert_eq!(list.query, "store");
+        assert_eq!(ids(&list), [1, 2, 0]);
+        list.set_query("  \t".into());
+        assert!(!list.search_active());
+        assert_eq!(ids(&list), [0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn replacement_rebuilds_search_cache_and_copy_accepts_only_visible_selection() {
+        let p = Placeholders::for_locale("en");
+        let mut list = ListState::from_apps(vec![app(1, Some("old"))], &[], &p);
+        list.set_query("new".into());
+        assert_eq!(list.visible_count(), 0);
+        list.replace_apps(vec![app(1, Some("new"))], &[], &p);
+        assert_eq!(list.visible_count(), 1);
+        let selected = list.rows.iter().map(|row| row.app.sid.clone()).collect();
+        list.set_query("old".into());
+        assert_eq!(
+            copy_column(list.visible_rows(), &selected, Column::Name, &p),
+            ""
+        );
+        assert_eq!(copy_rows(list.visible_rows(), &selected, &p), "");
+    }
 
     fn app(id: u32, name: Option<&str>) -> AppContainer {
         AppContainer {
@@ -565,7 +737,7 @@ mod tests {
             [exemptions[0].clone(), exemptions[2].clone()]
         );
         assert!(!state.is_dirty());
-        assert_eq!(state.counter_text(), "1 / 2");
+        assert_eq!(state.counter(), (1, 2));
         state.rows[0].checked = false;
         assert!(state.is_dirty()); // No mark_saved on a failed API call.
         assert!(state.rows[0].app.exempt_at_last_check);
@@ -577,10 +749,7 @@ mod tests {
     #[test]
     fn null_empty_and_joined_values_render_differently() {
         let p = Placeholders::for_locale("en");
-        let mut row = Row {
-            app: app(1, None),
-            checked: false,
-        };
+        let mut row = Row::new(app(1, None), 0);
         assert_eq!(
             row.columns(&p),
             [
@@ -657,18 +826,9 @@ mod tests {
             b.users = vec!["A".into()];
             a.binaries = vec!["z".into()];
             b.binaries = vec!["A".into()];
-            let mut rows = vec![
-                Row {
-                    app: a,
-                    checked: true,
-                },
-                Row {
-                    app: b.clone(),
-                    checked: false,
-                },
-            ];
+            let mut rows = vec![Row::new(a, 0), Row::new(b.clone(), 1)];
             let mut sort = Sort {
-                column,
+                column: Some(column),
                 ascending: true,
             };
             sort.apply(&mut rows, &p);
@@ -676,12 +836,32 @@ mod tests {
             sort.click(column);
             sort.apply(&mut rows, &p);
             assert_eq!(rows[1].app.sid, b.sid);
+            // The third click clears sorting and restores enumeration order.
+            sort.click(column);
+            assert_eq!(sort.column, None);
+            sort.apply(&mut rows, &p);
+            assert_eq!(rows[1].app.sid, b.sid);
+            assert_eq!(rows[0].source_index, 0);
         }
         let mut sort = Sort::default();
         sort.click(Column::DisplayName);
-        assert!(!sort.ascending);
+        assert_eq!(
+            (sort.column, sort.ascending),
+            (Some(Column::DisplayName), false)
+        );
         sort.click(Column::Binaries);
-        assert!(!sort.ascending);
+        assert_eq!(
+            (sort.column, sort.ascending),
+            (Some(Column::Binaries), true)
+        );
+        sort.click(Column::Binaries);
+        sort.click(Column::Binaries);
+        assert_eq!(sort.column, None);
+        sort.click(Column::Binaries);
+        assert_eq!(
+            (sort.column, sort.ascending),
+            (Some(Column::Binaries), true)
+        );
         let state = ListState::from_apps(
             vec![app(1, Some("\u{e000}")), app(2, Some("\u{10000}"))],
             &[],
@@ -718,6 +898,38 @@ mod tests {
             copy_column(&state.rows, &selected, Column::Name, &p),
             "a\r\nz\r\n"
         );
+    }
+
+    #[test]
+    fn bulk_actions_touch_only_visible_rows_while_searching() {
+        let p = Placeholders::for_locale("en");
+        let mut state =
+            ListState::from_apps(vec![app(1, Some("Store")), app(2, Some("Photos"))], &[], &p);
+        assert_eq!(
+            state.bulk_label_keys(),
+            ("toolbar.exempt_all", "toolbar.exempt_none")
+        );
+        state.set_query("store".into());
+        assert_eq!(
+            state.bulk_label_keys(),
+            ("toolbar.exempt_results", "toolbar.exempt_none_results")
+        );
+        assert_eq!(state.set_all(true).key, Some("status.exempt_results"));
+        let checked = |name: &str| {
+            state
+                .rows
+                .iter()
+                .find(|row| row.app.display_name.as_deref() == Some(name))
+                .unwrap()
+                .checked
+        };
+        assert!(checked("Store"));
+        assert!(!checked("Photos"));
+        state.set_query("zzz".into());
+        assert!(!state.availability().bulk);
+        // Without a search the bulk action covers every row again.
+        state.set_query(String::new());
+        assert_eq!(state.set_all(false).key, None);
     }
 
     #[test]

@@ -103,88 +103,31 @@ pub(super) fn clipboard(hwnd: usize, text: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub(super) enum MenuCommand {
-    CopyRows,
-    CopyColumn,
-    ExemptNone,
-    ExemptAll,
-}
-
-/// Reactor a29e064 rejects MenuExt on a Border (ir.rs:166–173).
-pub(super) fn context_menu(hwnd: usize) -> Result<Option<MenuCommand>, Error> {
-    use windows::{
-        Win32::{HMENU, POINT, winuser::*},
-        core::HSTRING,
+/// PointerEventInfo is in window-relative DIPs (declaration.rs); ScreenPoint is in
+/// physical pixels (transient_menu.rs::position_host uses PhysicalCoordinates).
+pub(super) fn screen_point(
+    hwnd: usize,
+    event: windows_reactor::PointerEventInfo,
+) -> Result<windows_reactor::ScreenPoint, Error> {
+    use windows::Win32::{
+        POINT,
+        winuser::{ClientToScreen, GetDpiForWindow},
     };
-    const COPY_ROWS: usize = 1;
-    const COPY_COLUMN: usize = 2;
-    const EXEMPT_NONE: usize = 3;
-    const EXEMPT_ALL: usize = 4;
-    struct Menu(HMENU);
-    impl Drop for Menu {
-        fn drop(&mut self) {
-            // SAFETY: this guard owns the popup and destroys it after tracking ends.
-            unsafe {
-                let _ = DestroyMenu(self.0);
-            }
-        }
+    // SAFETY: hwnd comes from run_window on this UI thread and remains live.
+    let dpi = unsafe { GetDpiForWindow(hwnd as _) };
+    if dpi == 0 {
+        return Err(failure("GetDpiForWindow"));
     }
-    // SAFETY: no arguments; the returned popup is immediately guarded.
-    let menu = Menu(unsafe { CreatePopupMenu() });
-    if menu.0.is_null() {
-        return Err(failure("CreatePopupMenu"));
+    let scale = f64::from(dpi) / 96.0;
+    let mut point = POINT {
+        x: (event.window_x * scale).round() as i32,
+        y: (event.window_y * scale).round() as i32,
+    };
+    // SAFETY: writable physical client point and live per-monitor-DPI-aware HWND.
+    if !unsafe { ClientToScreen(hwnd as _, &mut point) }.as_bool() {
+        return Err(failure("ClientToScreen"));
     }
-    for (id, key) in [
-        (COPY_ROWS, "menu.copy_rows"),
-        (COPY_COLUMN, "menu.copy_column"),
-        (0, ""),
-        (EXEMPT_NONE, "toolbar.exempt_none"),
-        (EXEMPT_ALL, "toolbar.exempt_all"),
-    ] {
-        let label = if id == 0 {
-            HSTRING::new()
-        } else {
-            HSTRING::from(rust_i18n::t!(key).as_ref())
-        };
-        // SAFETY: live menu and terminated label; a separator does not use the string.
-        if !unsafe {
-            AppendMenuW(
-                menu.0,
-                if id == 0 { MF_SEPARATOR } else { MF_STRING } as u32,
-                id,
-                &label,
-            )
-        }
-        .as_bool()
-        {
-            return Err(failure("AppendMenuW"));
-        }
-    }
-    let mut point = POINT::default();
-    // SAFETY: writable point receives screen coordinates at the right-click position.
-    if !unsafe { GetCursorPos(&mut point) }.as_bool() {
-        return Err(failure("GetCursorPos"));
-    }
-    // SAFETY: UI-thread-owned window/menu; RETURNCMD returns the ID without WM_COMMAND.
-    // Zero means cancellation. Tracking runs the standard native menu message loop.
-    let chosen = unsafe {
-        TrackPopupMenuEx(
-            menu.0,
-            (TPM_RETURNCMD | TPM_RIGHTBUTTON) as u32,
-            point.x,
-            point.y,
-            hwnd as _,
-            None,
-        )
-    }
-    .0 as usize;
-    Ok(match chosen {
-        COPY_ROWS => Some(MenuCommand::CopyRows),
-        COPY_COLUMN => Some(MenuCommand::CopyColumn),
-        EXEMPT_NONE => Some(MenuCommand::ExemptNone),
-        EXEMPT_ALL => Some(MenuCommand::ExemptAll),
-        _ => None,
-    })
+    Ok(windows_reactor::ScreenPoint::new(point.x, point.y))
 }
 
 /// All four flags are shared only by UI-thread code. Rc makes accidental Send impossible.
@@ -324,120 +267,4 @@ pub(super) fn open_help(hwnd: usize, url: &str) -> Result<(), Error> {
         });
     }
     Ok(())
-}
-
-/// Reveal a virtualized native ListView item. Reactor has no ListView reference or
-/// ScrollIntoView API at a29e064. UIA runs in an MTA worker, never on our UI thread:
-/// https://learn.microsoft.com/windows/win32/winauto/uiauto-threading
-/// No COM interface or allocation escapes this worker's apartment.
-pub(super) fn reveal(
-    hwnd: usize,
-    index: usize,
-    token: &windows_reactor::CancellationToken,
-) -> Result<(), Error> {
-    use std::mem::ManuallyDrop;
-    use windows::{
-        Win32::{
-            combaseapi::{CoCreateInstance, CoInitializeEx, CoUninitialize},
-            oaidl::{VARIANT, VARIANT_0, VARIANT_0_0, VARIANT_0_0_0},
-            objbase::COINIT_MULTITHREADED,
-            oleauto::VariantClear,
-            uiautomationclient::{
-                CUIAutomation, IUIAutomation, IUIAutomationElement,
-                IUIAutomationItemContainerPattern, IUIAutomationScrollItemPattern,
-                IUIAutomationVirtualizedItemPattern, TreeScope_Descendants,
-            },
-            wtypes::VT_BSTR,
-            wtypesbase::CLSCTX_INPROC_SERVER,
-        },
-        core::BSTR,
-    };
-    // UIAutomationClient.h identifiers; the pinned windows bindings omit these constants.
-    const AUTOMATION_ID_PROPERTY: i32 = 30011;
-    const ITEM_CONTAINER_PATTERN: i32 = 10019;
-    const VIRTUALIZED_ITEM_PATTERN: i32 = 10020;
-    const SCROLL_ITEM_PATTERN: i32 = 10017;
-    // FindItemByProperty: propertyId zero requests the next item regardless of value.
-    const NEXT_ITEM_PROPERTY: i32 = 0;
-    struct Apartment;
-    impl Drop for Apartment {
-        fn drop(&mut self) {
-            // SAFETY: this guard is created only after a successful CoInitializeEx.
-            unsafe {
-                CoUninitialize();
-            }
-        }
-    }
-    struct Variant(VARIANT);
-    impl Drop for Variant {
-        fn drop(&mut self) {
-            // SAFETY: this guard owns the VT_BSTR allocation, freed exactly once.
-            unsafe {
-                let _ = VariantClear(&mut self.0);
-            }
-        }
-    }
-    let work = || -> windows::core::Result<()> {
-        // SAFETY: reactor background workers do not own UI objects; initialize this call's
-        // COM apartment and balance successful S_OK/S_FALSE returns on the same thread.
-        unsafe { CoInitializeEx(None, COINIT_MULTITHREADED as u32) }.ok()?;
-        let _apartment = Apartment;
-        // SAFETY: documented UIA COM class, no aggregation, in-process activation.
-        let automation: IUIAutomation =
-            unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }?;
-        let value = Variant(VARIANT {
-            Anonymous: VARIANT_0 {
-                Anonymous: ManuallyDrop::new(VARIANT_0_0 {
-                    vt: VT_BSTR as u16,
-                    Anonymous: VARIANT_0_0_0 {
-                        bstrVal: ManuallyDrop::new(BSTR::from("apps")),
-                    },
-                    ..Default::default()
-                }),
-            },
-        });
-        // SAFETY: hwnd belongs to this window; UIA validates destroyed/invalid handles.
-        // The property condition copies its VARIANT; the guard keeps the BSTR live here.
-        let root = unsafe { automation.ElementFromHandle(hwnd as _) }?;
-        let condition =
-            unsafe { automation.CreatePropertyCondition(AUTOMATION_ID_PROPERTY, &value.0) }?;
-        let list = unsafe { root.FindFirst(TreeScope_Descendants, &condition) }?;
-        let items: IUIAutomationItemContainerPattern =
-            unsafe { list.GetCurrentPatternAs(ITEM_CONTAINER_PATTERN) }?;
-        let mut item: Option<IUIAutomationElement> = None;
-        for _ in 0..=index {
-            if token.is_cancelled() {
-                return Ok(());
-            }
-            // SAFETY: UIA COM interfaces stay in this MTA; an empty VARIANT is ignored
-            // when propertyId is zero. Each returned item is kept alive for the next call.
-            item = Some(unsafe {
-                items.FindItemByProperty(item.as_ref(), NEXT_ITEM_PROPERTY, &VARIANT::default())
-            }?);
-        }
-        let item = item.expect("inclusive index range produces an item");
-        if token.is_cancelled() {
-            return Ok(());
-        }
-        // SAFETY: VirtualizedItem may be absent for an already realized container.
-        if let Ok(virtualized) = unsafe {
-            item.GetCurrentPatternAs::<IUIAutomationVirtualizedItemPattern>(
-                VIRTUALIZED_ITEM_PATTERN,
-            )
-        } {
-            unsafe { virtualized.Realize() }.ok()?;
-        }
-        if token.is_cancelled() {
-            return Ok(());
-        }
-        // SAFETY: the realized item supplies ScrollItem; the UI thread remains free to
-        // service the provider. Focus is requested via reactor after this worker completes.
-        let scroll: IUIAutomationScrollItemPattern =
-            unsafe { item.GetCurrentPatternAs(SCROLL_ITEM_PATTERN) }?;
-        unsafe { scroll.ScrollIntoView() }.ok()
-    };
-    work().map_err(|source| Error::Native {
-        operation: "ListView ScrollIntoView",
-        source,
-    })
 }

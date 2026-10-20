@@ -26,7 +26,7 @@ pub enum Direction {
 pub struct Selection {
     pub selected: BTreeSet<Sid>,
     pub anchor: Option<Sid>,
-    /// WinUI's single selected item supplies keyboard focus, independently of our set.
+    /// The focused row is independent of the selected set and native checkbox focus.
     pub focused: Option<Sid>,
     pub context_column: Option<Column>,
 }
@@ -88,8 +88,7 @@ impl Selection {
             .collect();
     }
 
-    /// Handle Shift+Up/Down here; unmodified arrows can instead let WinUI move focus
-    /// and then call focus_changed. Returning the SID lets UI scroll it into view.
+    /// Handle plain and Shift+Up/Down in display order. The returned SID can be revealed.
     pub fn arrow(&mut self, order: &[Sid], direction: Direction, shift: bool) -> Option<Sid> {
         if order.is_empty() {
             return None;
@@ -112,14 +111,6 @@ impl Selection {
         }
         self.focused = Some(sid.clone());
         Some(sid.clone())
-    }
-
-    /// Synchronize an unmodified WinUI keyboard focus change as a single selection.
-    pub fn focus_changed(&mut self, order: &[Sid], sid: &Sid) {
-        if order.contains(sid) {
-            self.select_one(sid);
-            self.focused = Some(sid.clone());
-        }
     }
 
     pub fn select_all(&mut self, order: &[Sid]) {
@@ -246,8 +237,6 @@ mod tests {
         assert_eq!(s.selected, selected(&order, &[0]));
         s.arrow(&order, Direction::Up, false);
         assert_eq!(s.selected, selected(&order, &[0]));
-        s.focus_changed(&order, &order[4]);
-        assert_eq!(s.selected, selected(&order, &[4]));
     }
 
     #[test]
@@ -287,7 +276,6 @@ mod tests {
             PointerButton::Left,
             Column::Name,
         );
-        s.focus_changed(&[], &order[0]);
         assert_eq!(s, before);
         s.prune(&[]);
         assert_eq!(

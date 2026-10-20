@@ -53,6 +53,7 @@ impl Fixture {
                         registry: false,
                     },
                     publisher: primary.publisher(),
+                    app: None,
                 },
             )],
         )
@@ -73,6 +74,42 @@ impl Fixture {
             let Some((_, callback)) = timer else { break };
             callback();
             self.host.drain(100).unwrap();
+        }
+    }
+    fn send_table(&mut self, message: table::Message) {
+        let sender = self
+            .host
+            .sender_at::<table::TableView>(&[Key::from("main"), Key::from("table")])
+            .unwrap();
+        assert!(sender.send(message));
+        self.host.drain(1000).unwrap();
+        loop {
+            let timer = self.services.timers.lock().unwrap().pop_front();
+            let Some((_, callback)) = timer else { break };
+            callback();
+            self.host.drain(1000).unwrap();
+        }
+    }
+    fn emit(&mut self, id: &str, event: EventId, payload: EventPayload) {
+        let graph = self.host.runtime().graph();
+        let object = find(graph, graph.root().unwrap(), id).unwrap();
+        let callback = graph
+            .events(object)
+            .unwrap()
+            .iter()
+            .find(|value| value.id == event)
+            .unwrap()
+            .value
+            .clone();
+        self.host
+            .test_adapter_mut()
+            .queue_event(EventDispatch::new(object, event, callback, payload));
+        self.host.drain(1000).unwrap();
+        loop {
+            let timer = self.services.timers.lock().unwrap().pop_front();
+            let Some((_, callback)) = timer else { break };
+            callback();
+            self.host.drain(1000).unwrap();
         }
     }
     fn close_dialog(&mut self, result: ContentDialogResult) {
@@ -167,6 +204,86 @@ fn app(id: u32) -> AppContainer {
 }
 
 #[test]
+fn live_search_prunes_selection_scopes_bulk_to_results_and_renders_empty_template() {
+    let mut f = Fixture::new("search");
+    f.load(&[]);
+    let key = |key| KeyEventInfo {
+        key,
+        original_key: key,
+        modifiers: InputModifiers::CONTROL,
+        status: PhysicalKeyStatus::default(),
+    };
+    f.send(Message::ListKey(key(VirtualKey::A)));
+    f.emit(
+        "search",
+        EventId::TextChanged,
+        EventPayload::String("app2".into()),
+    );
+    assert_eq!(
+        f.property("search", PropertyId::Text),
+        PropertyValue::String("app2".into())
+    );
+    let graph = f.host.runtime().graph();
+    assert!(find(graph, graph.root().unwrap(), &format!("row_{}", sid(1))).is_none());
+    assert_eq!(
+        f.property(&format!("chrome_{}", sid(2)), PropertyId::Background),
+        PropertyValue::Brush(ThemeBrush::SubtleFillTertiary.into())
+    );
+    // Visible index 0 now refers to SID 2, not the first row in the full model.
+    f.send(Message::ToggleKey(sid(2).to_string(), true));
+    f.send(Message::Search(String::new()));
+    assert_eq!(
+        f.property(&format!("toggle_{}", sid(2)), PropertyId::IsChecked),
+        PropertyValue::OptionalBool(Some(true))
+    );
+    assert_eq!(
+        f.property(&format!("chrome_{}", sid(1)), PropertyId::Background),
+        PropertyValue::Brush(Color::transparent().into())
+    );
+    f.send(Message::Search("app2".into()));
+    // Only the visible match is exempted; the hidden first row stays unchecked.
+    f.send(Message::SetAll(true));
+    let expected = format!(
+        "{} · {}",
+        rust_i18n::t!("toolbar.counter", exempt = 1, total = 2),
+        rust_i18n::t!("search.results", count = 1)
+    );
+    assert_eq!(
+        f.property("counter", PropertyId::Text),
+        PropertyValue::String(expected.into())
+    );
+    f.send(Message::Search("nonsense-query".into()));
+    assert_eq!(
+        f.property("search_empty", PropertyId::Text),
+        PropertyValue::String(rust_i18n::t!("search.empty").into_owned().into())
+    );
+    f.send(Message::ListKey(key(VirtualKey::A)));
+    f.emit(
+        "search_host",
+        EventId::PreviewKeyDown,
+        EventPayload::KeyEventInfo(KeyEventInfo {
+            key: VirtualKey::ESCAPE,
+            original_key: VirtualKey::ESCAPE,
+            modifiers: InputModifiers::NONE,
+            status: PhysicalKeyStatus::default(),
+        }),
+    );
+    assert_eq!(
+        f.property("search", PropertyId::Text),
+        PropertyValue::String("".into())
+    );
+    for id in [1, 2] {
+        assert_eq!(
+            f.property(&format!("chrome_{}", sid(id)), PropertyId::Background),
+            PropertyValue::Brush(Color::transparent().into())
+        );
+    }
+    let graph = f.host.runtime().graph();
+    assert!(find(graph, graph.root().unwrap(), "search_empty").is_none());
+    assert!(f.services.background.lock().unwrap().is_empty());
+}
+
+#[test]
 fn actual_view_retains_dirty_edits_after_access_denied_and_commits_only_success() {
     let mut f = Fixture::new("save");
     f.load(&[]);
@@ -175,6 +292,10 @@ fn actual_view_retains_dirty_edits_after_access_denied_and_commits_only_success(
         PropertyValue::Bool(false)
     );
     f.send(Message::Checked(sid(1), true));
+    assert_eq!(
+        f.property("save", PropertyId::Style),
+        PropertyValue::ButtonStyle(ButtonStyle::Accent)
+    );
     f.send(Message::Save);
     assert_eq!(f.services.background.lock().unwrap().len(), 1);
     assert_eq!(
@@ -198,7 +319,11 @@ fn actual_view_retains_dirty_edits_after_access_denied_and_commits_only_success(
     );
     assert_eq!(
         f.property("counter", PropertyId::Text),
-        PropertyValue::String("1 / 2".into())
+        PropertyValue::String(
+            rust_i18n::t!("toolbar.counter", exempt = 1, total = 2)
+                .into_owned()
+                .into()
+        )
     );
     f.close_dialog(ContentDialogResult::None);
     f.send(Message::Save);
@@ -384,13 +509,275 @@ fn sorting_rebuilds_the_native_list_and_restores_the_sid_focus_after_mount() {
         },
     ));
     f.send(Message::Sort(Column::DisplayName));
+    assert!(matches!(
+        f.host
+            .adapter()
+            .imperatives()
+            .iter()
+            .rev()
+            .find(|request| matches!(request, ImperativeRequest::ScrollIntoView { .. })),
+        Some(ImperativeRequest::ScrollIntoView { index: 1, .. })
+    ));
     assert_eq!(
-        f.property("apps", PropertyId::SelectedIndex),
-        PropertyValue::SelectionIndex(Some(1))
+        f.property("apps", PropertyId::SelectionMode),
+        PropertyValue::Enum {
+            kind: "ListViewSelectionMode",
+            variant: "None"
+        }
     );
     f.send(Message::Checked(sid(1), true));
     assert_eq!(
         f.property("counter", PropertyId::Text),
-        PropertyValue::String("1 / 2".into())
+        PropertyValue::String(
+            rust_i18n::t!("toolbar.counter", exempt = 1, total = 2)
+                .into_owned()
+                .into()
+        )
+    );
+}
+
+#[test]
+fn captured_resize_with_260_rows_keeps_geometry_selection_and_sorting() {
+    let mut f = Fixture::new("resize");
+    f.send(Message::Loaded {
+        registry: false,
+        force: false,
+        fallback_code: None,
+        result: Ok(Loaded {
+            apps: (1..=260).map(app).collect(),
+            exempted: vec![],
+            user: String::new(),
+        }),
+    });
+    f.send(Message::Pointer(
+        sid(131),
+        Column::DisplayName,
+        PointerEventInfo {
+            is_left_button_pressed: true,
+            ..Default::default()
+        },
+    ));
+    let focus = f.property(&format!("chrome_{}", sid(131)), PropertyId::Background);
+    let columns = |width: f64| {
+        PropertyValue::GridLengths(
+            vec![
+                GridLength::Pixel(40.0),
+                GridLength::Pixel(width),
+                GridLength::Pixel(220.0),
+                GridLength::Pixel(200.0),
+                GridLength::Pixel(160.0),
+                GridLength::Pixel(140.0),
+                GridLength::Pixel(140.0),
+                GridLength::Pixel(48.0),
+            ]
+            .into(),
+        )
+    };
+    // Failed capture and unrelated pointer IDs must not start/move a resize.
+    f.send_table(table::Message::ResizeStart(
+        Column::DisplayName,
+        PointerEventInfo {
+            is_left_button_pressed: true,
+            capture_succeeded: Some(false),
+            ..Default::default()
+        },
+    ));
+    f.send_table(table::Message::ResizeMove(PointerEventInfo {
+        window_x: 300.0,
+        ..Default::default()
+    }));
+    assert_eq!(
+        f.property("header_columns", PropertyId::GridColumns),
+        columns(220.0)
+    );
+    let press = PointerEventInfo {
+        pointer_id: 5,
+        window_x: 260.0,
+        is_left_button_pressed: true,
+        capture_succeeded: Some(true),
+        ..Default::default()
+    };
+    f.send_table(table::Message::ResizeStart(Column::DisplayName, press));
+    f.send_table(table::Message::Sort(Column::DisplayName)); // capture may never sort
+    f.send_table(table::Message::ResizeMove(PointerEventInfo {
+        pointer_id: 6,
+        window_x: 900.0,
+        ..press
+    }));
+    assert_eq!(
+        f.property("header_columns", PropertyId::GridColumns),
+        columns(220.0)
+    );
+    let start = std::time::Instant::now();
+    for delta in 1..=20 {
+        f.send_table(table::Message::ResizeMove(PointerEventInfo {
+            window_x: 260.0 + delta as f64,
+            ..press
+        }));
+    }
+    eprintln!(
+        "260 rows: 20 resize updates {:?} ({:?}/update, recording adapter; excludes native layout)",
+        start.elapsed(),
+        start.elapsed() / 20
+    );
+    assert_eq!(
+        f.property("header_columns", PropertyId::GridColumns),
+        columns(240.0)
+    );
+    assert_eq!(
+        f.property(&format!("columns_{}", sid(131)), PropertyId::GridColumns),
+        columns(220.0)
+    );
+    assert!(
+        f.host
+            .sender_at::<table::TableView>(&[Key::from("main"), Key::from("table")])
+            .unwrap()
+            .send(table::Message::ResizeLost)
+    );
+    f.send_table(table::Message::ResizeEnd(PointerEventInfo {
+        window_x: 300.0,
+        is_left_button_pressed: false,
+        ..press
+    }));
+    assert_eq!(
+        f.property("header_columns", PropertyId::GridColumns),
+        columns(260.0)
+    );
+    assert_eq!(
+        f.property(&format!("columns_{}", sid(131)), PropertyId::GridColumns),
+        columns(260.0)
+    );
+    assert_eq!(
+        f.property(&format!("chrome_{}", sid(131)), PropertyId::Background),
+        focus
+    );
+    assert_eq!(
+        f.property("save", PropertyId::IsEnabled),
+        PropertyValue::Bool(false)
+    );
+    f.send_table(table::Message::ResizeStart(Column::DisplayName, press));
+    f.send_table(table::Message::ResizeLost);
+    f.send_table(table::Message::ResizeMove(PointerEventInfo {
+        window_x: 1000.0,
+        ..press
+    }));
+    assert_eq!(
+        f.property("header_columns", PropertyId::GridColumns),
+        columns(260.0)
+    );
+    let mut release_time = Duration::ZERO;
+    for _ in 0..20 {
+        f.send_table(table::Message::ResizeStart(Column::DisplayName, press));
+        f.send_table(table::Message::ResizeMove(PointerEventInfo {
+            window_x: press.window_x + 1.0,
+            ..press
+        }));
+        let start = std::time::Instant::now();
+        f.send_table(table::Message::ResizeEnd(PointerEventInfo {
+            window_x: press.window_x + 1.0,
+            is_left_button_pressed: false,
+            ..press
+        }));
+        release_time += start.elapsed();
+    }
+    eprintln!(
+        "260 rows: committing all row widths {:?}/release (20 samples, recording adapter; excludes native layout)",
+        release_time / 20
+    );
+}
+
+#[test]
+fn nested_table_routes_selection_checkbox_keys_hover_and_keyboard_focus() {
+    let mut f = Fixture::new("table-events");
+    f.load(&[]);
+    let row1 = format!("row_{}", sid(1));
+    let row2 = format!("row_{}", sid(2));
+    let chrome1 = format!("chrome_{}", sid(1));
+    let chrome2 = format!("chrome_{}", sid(2));
+    assert_eq!(
+        f.property(&format!("current_user_{}", sid(1)), PropertyId::Foreground),
+        PropertyValue::Brush(Brush::Theme(ThemeBrush::TextSecondary))
+    );
+    let pointer = PointerEventInfo {
+        is_left_button_pressed: true,
+        x: 52.0,
+        ..Default::default()
+    };
+    f.emit(
+        &row1,
+        EventId::PointerPressed,
+        EventPayload::PointerEventInfo(pointer),
+    );
+    f.emit(
+        &row2,
+        EventId::PointerPressed,
+        EventPayload::PointerEventInfo(PointerEventInfo {
+            modifiers: InputModifiers::CONTROL,
+            ..pointer
+        }),
+    );
+    let selected = PropertyValue::Brush(Brush::Theme(ThemeBrush::SubtleFillTertiary));
+    assert_eq!(f.property(&chrome1, PropertyId::Background), selected);
+    assert_eq!(f.property(&chrome2, PropertyId::Background), selected);
+    f.emit(
+        &format!("toggle_{}", sid(1)),
+        EventId::IsCheckedChanged,
+        EventPayload::OptionalBool(Some(true)),
+    );
+    assert_eq!(f.property(&chrome1, PropertyId::Background), selected);
+    assert_eq!(f.property(&chrome2, PropertyId::Background), selected);
+    assert_eq!(
+        f.property("save", PropertyId::IsEnabled),
+        PropertyValue::Bool(true)
+    );
+    f.emit(
+        "table",
+        EventId::PreviewKeyDown,
+        EventPayload::KeyEventInfo(KeyEventInfo {
+            key: VirtualKey::UP,
+            original_key: VirtualKey::UP,
+            status: PhysicalKeyStatus::default(),
+            modifiers: InputModifiers::NONE,
+        }),
+    );
+    // The recording adapter accepts imperative focus without emitting native GotFocus.
+    f.emit(
+        &row1,
+        EventId::GotFocus,
+        EventPayload::FocusEventInfo(FocusEventInfo {
+            state: ElementFocusState::Programmatic,
+            is_direct: true,
+        }),
+    );
+    assert_eq!(
+        f.property(&chrome1, PropertyId::BorderThickness),
+        PropertyValue::Thickness(Thickness::uniform(2.0))
+    );
+    f.emit(
+        &row1,
+        EventId::PointerPressed,
+        EventPayload::PointerEventInfo(pointer),
+    );
+    assert_eq!(
+        f.property(&chrome1, PropertyId::BorderThickness),
+        PropertyValue::Thickness(Thickness::uniform(0.0))
+    );
+    f.emit(
+        &row2,
+        EventId::PointerEntered,
+        EventPayload::PointerEventInfo(pointer),
+    );
+    assert_eq!(
+        f.property(&chrome2, PropertyId::Background),
+        PropertyValue::Brush(Brush::Theme(ThemeBrush::SubtleFillSecondary))
+    );
+    f.emit(
+        &row2,
+        EventId::PointerExited,
+        EventPayload::PointerEventInfo(pointer),
+    );
+    assert_eq!(
+        f.property(&chrome2, PropertyId::Background),
+        PropertyValue::Brush(Color::transparent().into())
     );
 }
