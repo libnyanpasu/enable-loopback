@@ -338,21 +338,22 @@ master 的 `Border` 提供 `on_pointer_pressed`（`PointerEventInfo` 含 `modifi
 | winget | `winget install Microsoft.WindowsAppRuntime.2`（2026-10-19 最高 2.4.0，落后于下载页的 2.5.1） |
 | 自包含 | `windows-reactor-setup` 在构建时从 NuGet 拉取固定版本的 runtime，把所需 DLL 和目录复制到 exe 旁并嵌入自包含清单；用户机器无需安装任何东西，代价是安装包变大（数十 MB 量级，需实测） |
 
-### 8.2 部署决定：用户自行安装（框架依赖）
+### 8.2 部署决定：框架依赖，由工具自己在启动阶段补装
 
 1. 子仓不用 `windows-reactor-setup`，exe 依赖已安装的 `Microsoft.WindowsAppRuntime.2` 框架包，版本下限等于所用 reactor 提交的 `WINDOWSAPPSDK_RUNTIME_VERSION`：0.100.0 为 2.4.0，锁定的 master `a29e064` 为 **2.5.1**（`crates/libs/reactor/src/native/bindings.rs`）。升级 reactor 提交时同步核对。
-2. 主仓在 `win_uwp.rs` 启动工具前检测：`GetPackagesByPackageFamily("Microsoft.WindowsAppRuntime.2_8wekyb3d8bbwe")`，并检查版本 ≥ 下限、架构匹配。此检测是 Windows 平台适配，放在现有 `win_uwp.rs` 旁，不进入 core。
-3. 缺失时前端弹本地化对话框，提供：
-   - "下载安装程序"：直接打开与所需版本和架构匹配的官方安装器链接 `https://aka.ms/windowsappsdk/<major.minor>/<version>/windowsappruntimeinstall-<x64|arm64>.exe`（锁定 `a29e064` 时为 `2.5/2.5.1`）；
+2. 检测与补装由工具自己负责，主仓只负责启动工具并传 `--lang`。GUI 模式在取得单实例之后、调用 reactor 之前，用 [`nyanpasu-windows-dependencies`](https://github.com/libnyanpasu/nyanpasu-windows-dependencies) 检测当前进程架构下已注册的最高版本；检测接口本身失败时只记调试日志，继续交给 reactor。命令行模式不检测（不需要 runtime）。
+3. 缺失时弹本地化对话框（`TaskDialogIndirect`，不依赖 WinUI）：
+   - "从 Microsoft Store 安装"：只在 Store 应用已注册、且策略未阻止时出现，并作为默认按钮。经 Store 安装服务按商品 `9NRZT3Q9R3DL` 安装，不打开商品页（商品页显示"当前不可用"）。安装在工作线程运行，对话框显示进度条（Store 报告百分比前为滚动条）。完成后重新检测，满足下限就继续启动。用户关闭进度对话框时工具退出，Store 在后台继续安装。安装失败，或装好的版本仍低于下限时，提示原因，再回到下载选项（不再提供 Store）；
+   - "下载安装程序"：打开与所需版本和架构匹配的官方安装器链接 `https://aka.ms/windowsappsdk/<major.minor>/<version>/windowsappruntimeinstall-<x64|arm64>.exe`（锁定 `a29e064` 时为 `2.5/2.5.1`）；
    - "打开下载页"：`https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads`；
    - "取消"。
    **不提供 winget 安装**：2026-10-19 winget 上 `Microsoft.WindowsAppRuntime.2` 最高只有 2.4.0，低于所需的 2.5.1，装完仍无法启动。winget 跟上后可再评估。
-   文案进主前端的 paraglide 消息（六语言）。安装完成后用户再次点击即可。
-4. 工具自身的兜底：若用户绕过主仓直接运行且缺失 runtime，reactor 的 bootstrap 会弹英文提示框。子仓在调用 reactor 前自行检测，缺失时弹本地化对话框（`TaskDialogIndirect`，按钮同第 3 条，不依赖 WinUI），避免出现英文提示；检测接口本身失败时只记调试日志并继续交给 reactor。命令行模式不检测（不需要 runtime）。
+   没有 Store 的系统（如 Windows LTSC）只显示后三项。
+4. C 运行时静态链接（`.cargo/config.toml` 的 `+crt-static`）。否则在没有 VC++ Redistributable 的系统上，加载器在检测代码运行之前就会失败。
 
 ## 9. 待决问题
 
-已定（2026-10-19）：submodule；修正保存缺陷；链接到微软文档；标题本地化；保留计数；不做 x86；runtime 由用户自行安装（框架依赖，主仓检测并本地化引导，见 §8.2）；接受 git rev 依赖 windows-rs master；多选自建（§6.2）；图标新绘、Fluent、SVG。
+已定（2026-10-19）：submodule；修正保存缺陷；链接到微软文档；标题本地化；保留计数；不做 x86；runtime 由工具在启动阶段检测并经 Store 或官方下载补装（框架依赖，见 §8.2）；接受 git rev 依赖 windows-rs master；多选自建（§6.2）；图标新绘、Fluent、SVG。
 
 1. 图标图形：待从 codex 概念图中选定。
 

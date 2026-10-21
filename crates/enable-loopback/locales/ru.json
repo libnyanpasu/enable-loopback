@@ -38,9 +38,14 @@
   "runtime": {
     "title": "Требуется Windows App Runtime",
     "missing": "Для этой утилиты требуется Windows App Runtime %{version} или новее для %{architecture}.",
+    "install_from_store": "Установить из Microsoft Store",
     "download_installer": "Скачать установщик",
     "open_download_page": "Открыть страницу загрузки",
-    "cancel": "Отмена"
+    "cancel": "Отмена",
+    "installing": "Windows App Runtime устанавливается из Microsoft Store. Если закрыть это окно, установка продолжится в фоновом режиме.",
+    "close": "Закрыть",
+    "store_failed": "Microsoft Store не удалось установить Windows App Runtime: %{detail}",
+    "store_incomplete": "Microsoft Store завершил работу, но Windows App Runtime %{version} или новее по-прежнему не установлен."
   },
   "cli": {
     "syntax": "Синтаксис:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Разрешить замыкание на себя всем AppContainer.\n-none: Очистить список исключений.\n-allow NAME: Добавить AppContainer, имена которых содержат NAME.\n-deny NAME: Удалить совпадающие исключения; * удаляет все.\nРегистр не учитывается. Начальный - или / необязателен.\nNAME может содержать пробелы. * соответствует всем именам.\nЯзыки: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Не обновлять автоматически. -registry: Читать прямо из реестра.",

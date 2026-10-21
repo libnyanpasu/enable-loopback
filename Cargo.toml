@@ -18,3 +18,14 @@ codegen-units = 1
 # Native GUI callbacks cannot unwind across the Windows ABI boundary.
 panic = "abort"
 strip = "symbols"
+
+# nyanpasu-windows-dependencies uses the published 0.100 support crates; build them
+# from the vendored fork instead, so the executable carries one copy.
+[patch.crates-io]
+windows-collections = { path = "vendor/windows-rs/crates/libs/collections" }
+windows-core = { path = "vendor/windows-rs/crates/libs/core" }
+windows-future = { path = "vendor/windows-rs/crates/libs/future" }
+windows-link = { path = "vendor/windows-rs/crates/libs/link" }
+windows-registry = { path = "vendor/windows-rs/crates/libs/registry" }
+windows-result = { path = "vendor/windows-rs/crates/libs/result" }
+windows-strings = { path = "vendor/windows-rs/crates/libs/strings" }

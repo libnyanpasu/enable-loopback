@@ -38,9 +38,14 @@
   "runtime": {
     "title": "Windows App Runtime が必要です",
     "missing": "このツールには %{architecture} 用の Windows App Runtime %{version} 以降が必要です。",
+    "install_from_store": "Microsoft Store からインストール",
     "download_installer": "インストーラーをダウンロード",
     "open_download_page": "ダウンロードページを開く",
-    "cancel": "キャンセル"
+    "cancel": "キャンセル",
+    "installing": "Microsoft Store から Windows App Runtime をインストールしています。このウィンドウを閉じても、インストールはバックグラウンドで続行されます。",
+    "close": "閉じる",
+    "store_failed": "Microsoft Store で Windows App Runtime をインストールできませんでした: %{detail}",
+    "store_incomplete": "Microsoft Store の処理は完了しましたが、Windows App Runtime %{version} 以降はまだインストールされていません。"
   },
   "cli": {
     "syntax": "構文：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：すべての AppContainer を除外。\n-none：除外リストを空にする。\n-allow NAME：名前に NAME を含む AppContainer を追加。\n-deny NAME：一致する除外を解除。* ですべて解除。\n大文字と小文字は区別しません。先頭の - または / は省略可能です。\nNAME には空白を含められます。* はすべてに一致します。\n言語：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：自動更新しない。-registry：レジストリから直接読み取る。",
