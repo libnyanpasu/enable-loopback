@@ -23,13 +23,14 @@ jobs:
           submodules: true
       - uses: dtolnay/rust-toolchain@nightly
         with:
+          components: rust-src
           targets: ${{ matrix.target }}
       - name: Check the tag matches the crate version
         shell: bash
         run: |
           version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "enable-loopback") | .version')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME does not match crate version $version"; exit 1; }
-      - run: cargo build --release --locked --target ${{ matrix.target }}
+      - run: cargo build --release --locked --target ${{ matrix.target }} -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
       - name: Name the asset and its checksum
         shell: bash
         run: |

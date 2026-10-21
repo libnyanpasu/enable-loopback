@@ -10,3 +10,11 @@ repository = "https://github.com/libnyanpasu/enable-loopback.git"
 
 [profile.dev]
 debug = "line-tables-only"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+# Native GUI callbacks cannot unwind across the Windows ABI boundary.
+panic = "abort"
+strip = "symbols"
