@@ -26,6 +26,23 @@ cargo run -- --lang zh-cn
 If a global Cargo configuration uses a compiler wrapper, set `RUSTC_WRAPPER=`
 to bypass it for these commands. Do not change the global configuration.
 
+For a size-optimized release, use the same command as the release workflow:
+
+```sh
+cargo build --release --locked --target x86_64-pc-windows-msvc \
+  -Z build-std=std,panic_abort -Z build-std-features=optimize_for_size
+```
+
+Use `aarch64-pc-windows-msvc` for arm64. This requires nightly and `rust-src`
+(included in `rust-toolchain.toml`). The executable is in
+`target/<target>/release/enableLoopback.exe`. A plain `cargo build --release`
+also uses the size profile, but keeps the precompiled standard library and is
+slightly larger. Release builds use full LTO, one codegen unit, size optimization,
+stripped symbols, and abort on panic; development builds retain unwinding and
+line tables. Recoverable application errors still use the existing error dialogs.
+
+See [release size measurements](docs/release-size.md) for the measured tradeoffs.
+
 `enableLoopback.exe [--lang CODE]` opens the GUI. Supported languages:
 `en`, `zh-cn`, `zh-tw`, `ja`, `ko`, `ru`; otherwise the system language is used,
 with English as the fallback. `manual` skips automatic refresh and `-registry`
