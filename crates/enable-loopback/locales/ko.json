@@ -38,9 +38,14 @@
   "runtime": {
     "title": "Windows App Runtime 필요",
     "missing": "이 도구에는 %{architecture}용 Windows App Runtime %{version} 이상이 필요합니다.",
+    "install_from_store": "Microsoft Store에서 설치",
     "download_installer": "설치 프로그램 다운로드",
     "open_download_page": "다운로드 페이지 열기",
-    "cancel": "취소"
+    "cancel": "취소",
+    "installing": "Microsoft Store에서 Windows App Runtime을 설치하는 중입니다. 이 창을 닫아도 설치는 백그라운드에서 계속됩니다.",
+    "close": "닫기",
+    "store_failed": "Microsoft Store에서 Windows App Runtime을 설치하지 못했습니다: %{detail}",
+    "store_incomplete": "Microsoft Store 작업은 끝났지만 Windows App Runtime %{version} 이상이 아직 설치되지 않았습니다."
   },
   "cli": {
     "syntax": "사용법:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: 모든 AppContainer의 예외를 허용합니다.\n-none: 예외 목록을 비웁니다.\n-allow NAME: 이름에 NAME이 포함된 AppContainer를 추가합니다.\n-deny NAME: 일치하는 예외를 해제합니다. *는 모두 해제합니다.\n명령은 대소문자를 구분하지 않으며 앞의 - 또는 /는 생략할 수 있습니다.\nNAME에 공백을 사용할 수 있습니다. *는 모두 일치합니다.\n언어: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: 자동 새로 고침을 건너뜁니다. -registry: 레지스트리에서 직접 읽습니다.",

@@ -38,9 +38,14 @@
   "runtime": {
     "title": "需要 Windows App Runtime",
     "missing": "本工具需要適用於 %{architecture} 的 Windows App Runtime %{version} 或更新版本。",
+    "install_from_store": "從 Microsoft Store 安裝",
     "download_installer": "下載安裝程式",
     "open_download_page": "開啟下載頁面",
-    "cancel": "取消"
+    "cancel": "取消",
+    "installing": "正在從 Microsoft Store 安裝 Windows App Runtime。關閉此視窗後，安裝會在背景繼續。",
+    "close": "關閉",
+    "store_failed": "Microsoft Store 無法安裝 Windows App Runtime：%{detail}",
+    "store_incomplete": "Microsoft Store 已完成，但仍未安裝 Windows App Runtime %{version} 或更新版本。"
   },
   "cli": {
     "syntax": "語法：\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all：豁免所有 AppContainer。\n-none：清空豁免清單。\n-allow NAME：新增名稱包含 NAME 的 AppContainer。\n-deny NAME：移除名稱相符的豁免；* 表示全部移除。\n命令不分大小寫，開頭的 - 或 / 可省略。\nNAME 可包含空格，以 * 比對全部。\n語言：en、zh-cn、zh-tw、ja、ko、ru。\nmanual：不自動重新整理。-registry：直接讀取登錄。",

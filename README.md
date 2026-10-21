@@ -10,6 +10,8 @@ App Runtime **2.5.1.0 or later**, matching the process architecture:
 Download the official **2.5.1** installer for [x64](https://aka.ms/windowsappsdk/2.5/2.5.1/windowsappruntimeinstall-x64.exe)
 or [arm64](https://aka.ms/windowsappsdk/2.5/2.5.1/windowsappruntimeinstall-arm64.exe).
 See also the [Windows App SDK downloads](https://learn.microsoft.com/windows/apps/windows-app-sdk/downloads).
+When the runtime is missing, the GUI offers to install it from the Microsoft Store
+(where the Store is available) or opens these downloads.
 
 Build and run in Git Bash:
 

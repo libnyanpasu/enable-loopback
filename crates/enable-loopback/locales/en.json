@@ -38,9 +38,14 @@
   "runtime": {
     "title": "Windows App Runtime required",
     "missing": "This tool requires Windows App Runtime %{version} or later for %{architecture}.",
+    "install_from_store": "Install from Microsoft Store",
     "download_installer": "Download installer",
     "open_download_page": "Open download page",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "installing": "Installing Windows App Runtime from Microsoft Store. If you close this window, the installation continues in the background.",
+    "close": "Close",
+    "store_failed": "Microsoft Store could not install Windows App Runtime: %{detail}",
+    "store_incomplete": "Microsoft Store finished, but Windows App Runtime %{version} or later is still not installed."
   },
   "cli": {
     "syntax": "Syntax:\nenableLoopback [--lang CODE] [-all | -none | -allow NAME... | -deny NAME... | ?]\nenableLoopback [manual] [-registry] [--lang CODE]\n\n-all: Exempt all AppContainers.\n-none: Clear all exemptions.\n-allow NAME: Add AppContainers whose names contain NAME.\n-deny NAME: Remove matching exemptions; * removes all.\nCommands ignore case; the leading - or / is optional.\nNAME may contain spaces. Use * to match all.\nLanguages: en, zh-cn, zh-tw, ja, ko, ru.\nmanual: Skip automatic refresh. -registry: Read the registry directly.",
