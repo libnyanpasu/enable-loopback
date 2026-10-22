@@ -2,7 +2,7 @@
 
 Generated from the commit history by [git-cliff](https://git-cliff.org).
 
-## Unreleased
+## [0.1.4](https://github.com/libnyanpasu/enable-loopback/releases/tag/v0.1.4) - 2026-10-22
 
 - License the project under MIT ([a68bbb1](https://github.com/libnyanpasu/enable-loopback/commit/a68bbb15b9667dafabcacd728e62996cd1bd205f))
 - Center the window on the monitor under the cursor ([be9e97f](https://github.com/libnyanpasu/enable-loopback/commit/be9e97fcbeb869f0f9e74b667c289c597a48f07d))
@@ -12,6 +12,7 @@ Generated from the commit history by [git-cliff](https://git-cliff.org).
 - Keep the table's scroll position when its rows are replaced ([f6adeec](https://github.com/libnyanpasu/enable-loopback/commit/f6adeec373fb328cc191c83ea0c22b76e2afa822))
 - Build table rows only near the list's viewport ([5174e44](https://github.com/libnyanpasu/enable-loopback/commit/5174e443aa44b3f7ca69e3d7048ae98fef82f354))
 - Create cell tooltips only for the hovered row ([21a257a](https://github.com/libnyanpasu/enable-loopback/commit/21a257af34f4552f15d1eb9d42be4bc3a741311b))
+- Generate the changelog and release notes with git-cliff ([a7190f5](https://github.com/libnyanpasu/enable-loopback/commit/a7190f5aa8a972ffbc084bdf7bec1524f33ef691))
 
 ## [0.1.3](https://github.com/libnyanpasu/enable-loopback/releases/tag/v0.1.3) - 2026-10-21
 
