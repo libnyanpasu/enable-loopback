@@ -76,6 +76,8 @@ pub(super) struct TableView {
     row_refs: BTreeMap<String, ElementRef<Border>>,
     checkbox_focus: Rc<Cell<bool>>,
     restore_focus: bool,
+    /// The list's horizontal scroll offset, which the header follows.
+    scroll_x: f64,
 }
 
 struct Drag {
@@ -97,6 +99,7 @@ pub(super) enum Message {
     ContextPoint(String, Column, Result<ScreenPoint, super::Error>),
     Scrolled(u64, String, bool, Result<bool, IntegrationError>),
     FocusReady(u64, String),
+    HorizontalOffset(f64),
 }
 
 impl TableView {
@@ -115,6 +118,8 @@ impl TableView {
         ListView::new()
             .grid_row(1)
             .automation_id("apps")
+            .horizontal_scroll(true)
+            .on_horizontal_offset_changed(cx.callback(Message::HorizontalOffset))
             .element_ref(&self.list_ref)
             .is_enabled(input.enabled)
             .selection_mode(ListViewSelectionMode::None)
@@ -277,6 +282,7 @@ impl Component for TableView {
                 .collect(),
             checkbox_focus: Rc::new(Cell::new(false)),
             restore_focus: true,
+            scroll_x: 0.0,
         }
     }
 
@@ -293,6 +299,8 @@ impl Component for TableView {
         self.restore_focus = input.generation != self.input.generation;
         if input.generation != self.input.generation {
             self.checkbox_focus.set(false);
+            // A new generation replaces the ListView, which starts unscrolled.
+            self.scroll_x = 0.0;
         }
         if input.generation != self.input.generation || input.focused != self.input.focused {
             self.focus_timer = None;
@@ -390,6 +398,7 @@ impl Component for TableView {
             Message::Scrolled(_, _, _, Err(error)) => {
                 crate::debug(&format!("Table scroll request failed: {error:?}"))
             }
+            Message::HorizontalOffset(offset) => self.scroll_x = offset,
             _ => {}
         }
     }
@@ -428,19 +437,27 @@ impl Component for TableView {
         let on_key = input.on_key.clone();
         let check_focus = self.checkbox_focus.clone();
         let enabled = input.enabled;
+        // The list's own ScrollViewer scrolls both ways, keeping its vertical scroll bar
+        // at the card edge and horizontal wheels on the horizontal axis. The header
+        // follows its horizontal offset inside a non-scrolling ScrollViewer, which clips.
         let mut content: Vec<View> = vec![
-            ScrollViewer::new()
-                .horizontal_scroll_bar_visibility(ScrollBarVisibility::Auto)
-                .vertical_scroll_bar_visibility(ScrollBarVisibility::Disabled)
-                .content(
-                    Grid::new()
-                        .width(self.content_width(self.widths))
-                        .rows([GridLength::Auto, GridLength::STAR])
-                        .keyed_children([
-                            keyed("headers", self.headers(cx)),
-                            keyed(input.generation, self.rows(cx)),
-                        ]),
-                )
+            Grid::new()
+                .rows([GridLength::Auto, GridLength::STAR])
+                .keyed_children([
+                    keyed(
+                        "headers",
+                        ScrollViewer::new()
+                            .horizontal_scroll_bar_visibility(ScrollBarVisibility::Disabled)
+                            .vertical_scroll_bar_visibility(ScrollBarVisibility::Disabled)
+                            .content(
+                                self.headers(cx)
+                                    .width(self.content_width(self.widths))
+                                    .horizontal_alignment(HorizontalAlignment::Left)
+                                    .margin(Thickness::new(-self.scroll_x, 0.0, 0.0, 0.0)),
+                            ),
+                    ),
+                    keyed(input.generation, self.rows(cx)),
+                ])
                 .into(),
         ];
         if let Some(text) = &input.empty_text {
