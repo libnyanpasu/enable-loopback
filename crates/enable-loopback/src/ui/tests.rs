@@ -774,6 +774,18 @@ fn nested_table_routes_selection_checkbox_keys_hover_and_keyboard_focus() {
         f.property(&chrome1, PropertyId::BorderThickness),
         PropertyValue::Thickness(Thickness::uniform(0.0))
     );
+    // Only the hovered row carries its seven cell tooltips.
+    let tooltips = |f: &Fixture| {
+        let graph = f.host.runtime().graph();
+        let columns = find(graph, graph.root().unwrap(), &format!("columns_{}", sid(2))).unwrap();
+        graph
+            .children(columns, RelationId::Children)
+            .unwrap()
+            .iter()
+            .filter(|cell| f.host.adapter().tooltip(**cell).is_some())
+            .count()
+    };
+    assert_eq!(tooltips(&f), 0);
     f.emit(
         &row2,
         EventId::PointerEntered,
@@ -783,6 +795,7 @@ fn nested_table_routes_selection_checkbox_keys_hover_and_keyboard_focus() {
         f.property(&chrome2, PropertyId::Background),
         PropertyValue::Brush(Brush::Theme(ThemeBrush::SubtleFillSecondary))
     );
+    assert_eq!(tooltips(&f), 7);
     f.emit(
         &row2,
         EventId::PointerExited,
@@ -792,4 +805,5 @@ fn nested_table_routes_selection_checkbox_keys_hover_and_keyboard_focus() {
         f.property(&chrome2, PropertyId::Background),
         PropertyValue::Brush(Color::transparent().into())
     );
+    assert_eq!(tooltips(&f), 0);
 }

@@ -141,13 +141,16 @@ impl Component for TableRow {
             } else {
                 label.into()
             };
-            cells.push(
-                Border::new()
-                    .grid_column(index as i32 + 1)
-                    .padding(Thickness::xy(12.0, 0.0))
-                    .content(content)
-                    .tooltip(text),
-            );
+            let cell = Border::new()
+                .grid_column(index as i32 + 1)
+                .padding(Thickness::xy(12.0, 0.0))
+                .content(content);
+            // Only the hovered row carries tooltips, so rows do not each hold seven.
+            cells.push(if self.hovered {
+                cell.tooltip(text)
+            } else {
+                cell.into()
+            });
         }
         let fill: Brush = if input.selected {
             ThemeBrush::SubtleFillTertiary.into()
