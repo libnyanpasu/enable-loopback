@@ -316,7 +316,7 @@ impl MainWindow {
             "column.users",
             "column.binaries",
         ];
-        let widths = [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 48.0];
+        let widths = [220.0, 220.0, 200.0, 160.0, 140.0, 140.0, 200.0];
         component::<table::TableView>(
             "table",
             table::Input {

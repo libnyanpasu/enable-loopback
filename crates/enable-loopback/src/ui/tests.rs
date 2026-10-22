@@ -568,7 +568,7 @@ fn captured_resize_with_260_rows_keeps_geometry_selection_and_sorting() {
                 GridLength::Pixel(160.0),
                 GridLength::Pixel(140.0),
                 GridLength::Pixel(140.0),
-                GridLength::Pixel(48.0),
+                GridLength::Pixel(200.0),
             ]
             .into(),
         )
