@@ -624,9 +624,11 @@ fn captured_resize_with_260_rows_keeps_geometry_selection_and_sorting() {
         f.property("header_columns", PropertyId::GridColumns),
         columns(240.0)
     );
+    // Rows follow on a coalescing frame timer; its tick may already have run.
+    f.send_table(table::Message::FollowResize);
     assert_eq!(
         f.property(&format!("columns_{}", sid(131)), PropertyId::GridColumns),
-        columns(220.0)
+        columns(240.0)
     );
     assert!(
         f.host

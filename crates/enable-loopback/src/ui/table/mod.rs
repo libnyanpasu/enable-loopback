@@ -71,6 +71,8 @@ pub(super) struct TableView {
     row_widths: ColumnWidths,
     drag: Option<Drag>,
     resize_timer: Option<ComponentTimer>,
+    /// Coalesces row relayouts during a drag: all rows cost about two header updates.
+    rows_timer: Option<ComponentTimer>,
     focus_timer: Option<ComponentTimer>,
     list_ref: ElementRef<ListView>,
     row_refs: BTreeMap<String, ElementRef<Border>>,
@@ -94,6 +96,7 @@ pub(super) enum Message {
     ResizeEnd(PointerEventInfo),
     ResizeLost,
     FinishResize,
+    FollowResize,
     Pointer((String, Column, PointerEventInfo)),
     Context((String, Column, PointerEventInfo)),
     ContextPoint(String, Column, Result<ScreenPoint, super::Error>),
@@ -110,6 +113,7 @@ impl TableView {
     fn commit_resize(&mut self) {
         self.drag = None;
         self.resize_timer = None;
+        self.rows_timer = None;
         self.row_widths = self.widths;
     }
 
@@ -273,6 +277,7 @@ impl Component for TableView {
             row_widths: widths,
             drag: None,
             resize_timer: None,
+            rows_timer: None,
             focus_timer: None,
             list_ref: ElementRef::new(),
             row_refs: input
@@ -349,6 +354,11 @@ impl Component for TableView {
                         .drag(drag.column, drag.width, event.window_x - drag.origin);
                     if !event.is_left_button_pressed {
                         self.commit_resize();
+                    } else if self.rows_timer.is_none() {
+                        self.rows_timer =
+                            Some(cx.set_local_timeout(Duration::from_millis(16), || {
+                                Message::FollowResize
+                            }));
                     }
                 }
             }
@@ -358,6 +368,10 @@ impl Component for TableView {
                     Some(cx.set_local_timeout(Duration::from_millis(1), || Message::FinishResize));
             }
             Message::FinishResize => self.commit_resize(),
+            Message::FollowResize => {
+                self.rows_timer = None;
+                self.row_widths = self.widths;
+            }
             Message::Pointer((key, column, event)) if self.input.enabled && self.drag.is_none() => {
                 self.input.on_pointer.call((key, column, event));
             }
