@@ -66,15 +66,36 @@ impl Fixture {
             _primary: primary,
         }
     }
-    fn send(&mut self, message: Message) {
-        assert!(self.sender.send(message));
-        self.host.drain(100).unwrap();
+    /// Drains messages and timers, then prepares every row like a list showing them all.
+    fn settle(&mut self, budget: usize) {
+        self.host.drain(budget).unwrap();
         loop {
             let timer = self.services.timers.lock().unwrap().pop_front();
             let Some((_, callback)) = timer else { break };
             callback();
-            self.host.drain(100).unwrap();
+            self.host.drain(budget).unwrap();
         }
+        let graph = self.host.runtime().graph();
+        let Some(list) = find(graph, graph.root().unwrap(), "apps") else {
+            return;
+        };
+        let count = graph.virtual_item_count(list).unwrap();
+        let source_revision = graph.virtual_source_revision(list).unwrap();
+        for index in 0..count {
+            self.host
+                .test_adapter_mut()
+                .queue_realization(RealizationRequest::Realize {
+                    collection: list,
+                    container: RealizedContainer(index as u64),
+                    index,
+                    source_revision,
+                });
+        }
+        self.host.drain(budget.max(count * 10)).unwrap();
+    }
+    fn send(&mut self, message: Message) {
+        assert!(self.sender.send(message));
+        self.settle(100);
     }
     fn send_table(&mut self, message: table::Message) {
         let sender = self
@@ -82,13 +103,7 @@ impl Fixture {
             .sender_at::<table::TableView>(&[Key::from("main"), Key::from("table")])
             .unwrap();
         assert!(sender.send(message));
-        self.host.drain(1000).unwrap();
-        loop {
-            let timer = self.services.timers.lock().unwrap().pop_front();
-            let Some((_, callback)) = timer else { break };
-            callback();
-            self.host.drain(1000).unwrap();
-        }
+        self.settle(1000);
     }
     fn emit(&mut self, id: &str, event: EventId, payload: EventPayload) {
         let graph = self.host.runtime().graph();
@@ -104,13 +119,7 @@ impl Fixture {
         self.host
             .test_adapter_mut()
             .queue_event(EventDispatch::new(object, event, callback, payload));
-        self.host.drain(1000).unwrap();
-        loop {
-            let timer = self.services.timers.lock().unwrap().pop_front();
-            let Some((_, callback)) = timer else { break };
-            callback();
-            self.host.drain(1000).unwrap();
-        }
+        self.settle(1000);
     }
     fn close_dialog(&mut self, result: ContentDialogResult) {
         self.send(Message::DialogClosed(result));
@@ -173,6 +182,7 @@ fn find(graph: &RetainedGraph, root: ObjectId, id: &str) -> Option<ObjectId> {
         RelationId::PrimaryCommands,
         RelationId::SecondaryCommands,
         RelationId::Items,
+        RelationId::VirtualItems,
     ] {
         if let Some(child) = graph.child(root, relation)
             && let Some(found) = find(graph, child, id)

@@ -179,25 +179,48 @@ impl TableView {
                 horizontal_content_alignment: Some(HorizontalAlignment::Stretch),
                 suppress_selection_visuals: true,
             })
-            .items(input.rows.iter().map(|item| {
-                DataItem::new(item.key.clone(), &item.cells[0]).content(component::<row::TableRow>(
-                    item.key.clone(),
-                    row::Input {
-                        row: item.clone(),
-                        widths: self.row_widths,
-                        width: self.content_width(self.row_widths),
-                        selected: input.selected.contains(&item.key),
-                        focused: input.focused.as_ref() == Some(&item.key),
-                        keyboard_focus: input.keyboard_focus,
-                        focus_ref: self.row_refs[&item.key].clone(),
-                        checkbox_focus: self.checkbox_focus.clone(),
-                        on_toggle: input.on_toggle.clone(),
-                        on_pointer: cx.callback(Message::Pointer),
-                        on_context: cx.callback(Message::Context),
-                        on_focus: input.on_focus.clone(),
+            // Only rows the list prepares containers for are built. A generation's keys are
+            // fixed, except that a refresh empties the rows in place, which changes the length.
+            .virtual_source({
+                let rows = input.rows.clone();
+                let keys = input.rows.clone();
+                let selected = input.selected.clone();
+                let focused = input.focused.clone();
+                let keyboard_focus = input.keyboard_focus;
+                let widths = self.row_widths;
+                let width = self.content_width(self.row_widths);
+                let row_refs = self.row_refs.clone();
+                let checkbox_focus = self.checkbox_focus.clone();
+                let on_toggle = input.on_toggle.clone();
+                let on_pointer = cx.callback(Message::Pointer);
+                let on_context = cx.callback(Message::Context);
+                let on_focus = input.on_focus.clone();
+                VirtualSource::new(
+                    input.generation,
+                    input.rows.len(),
+                    move |index| keys[index].key.clone(),
+                    move |index| {
+                        let item = &rows[index];
+                        component::<row::TableRow>(
+                            item.key.clone(),
+                            row::Input {
+                                row: item.clone(),
+                                widths,
+                                width,
+                                selected: selected.contains(&item.key),
+                                focused: focused.as_ref() == Some(&item.key),
+                                keyboard_focus,
+                                focus_ref: row_refs[&item.key].clone(),
+                                checkbox_focus: checkbox_focus.clone(),
+                                on_toggle: on_toggle.clone(),
+                                on_pointer: on_pointer.clone(),
+                                on_context: on_context.clone(),
+                                on_focus: on_focus.clone(),
+                            },
+                        )
                     },
-                ))
-            }))
+                )
+            })
     }
 
     fn headers(&self, cx: &ViewContext<Self>) -> Border {

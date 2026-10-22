@@ -163,6 +163,8 @@ impl Component for TableRow {
             .is_tab_stop(true)
             .focus_on_pointer_release(true)
             .automation_id(format!("row_{}", input.row.key))
+            // The list names its item after the row's view.
+            .automation_name(&input.row.cells[0])
             .width(input.width)
             .height(super::ROW_HEIGHT)
             .background(Color::transparent())
