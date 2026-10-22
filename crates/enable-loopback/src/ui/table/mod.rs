@@ -12,6 +12,8 @@ use std::{
 use windows_reactor::*;
 
 const SORT_GLYPH_SIZE: f64 = 10.0;
+/// Rows have a fixed height, so a vertical offset maps to row indices.
+const ROW_HEIGHT: f64 = 40.0;
 
 pub(super) const COLUMNS: [Column; 7] = [
     Column::DisplayName,
@@ -80,13 +82,45 @@ pub(super) struct TableView {
     restore_focus: bool,
     /// The list's horizontal scroll offset, which the header follows.
     scroll_x: f64,
+    /// The list's vertical offset; read only when the rows are replaced, so no render.
+    scroll_y: Rc<Cell<f64>>,
+    /// Offsets for the next generation's ListView, which starts unscrolled.
+    restore: Option<(f64, f64)>,
+    /// Rows and offsets from before the rows were emptied in place (a refresh, or a
+    /// search without results), which also scrolls the list back to the start.
+    held: Option<HeldView>,
 }
+
+/// Rows with the horizontal and vertical offsets they were shown at.
+type HeldView = (Rc<Vec<Rc<Row>>>, f64, f64);
 
 struct Drag {
     column: Column,
     pointer_id: u32,
     origin: f64,
     width: f64,
+    /// Widening the last column at the right end keeps that end, and the grip, in view.
+    pin_end: bool,
+}
+
+/// The vertical offset that keeps an anchor row where it was on screen: the focused row
+/// when it survives, otherwise the first surviving row from the top of the old view.
+fn anchored_offset(old: &[Rc<Row>], new: &[Rc<Row>], focused: Option<&str>, offset: f64) -> f64 {
+    let positions: BTreeMap<&str, usize> = new
+        .iter()
+        .enumerate()
+        .map(|(index, row)| (row.key.as_str(), index))
+        .collect();
+    let survivor =
+        |(index, row): (usize, &Rc<Row>)| positions.get(row.key.as_str()).map(|&new| (index, new));
+    let top = (offset / ROW_HEIGHT).floor().max(0.0) as usize;
+    let anchor = focused
+        .and_then(|key| old.iter().position(|row| row.key == key))
+        .and_then(|index| survivor((index, &old[index])))
+        .or_else(|| old.iter().enumerate().skip(top).find_map(survivor));
+    anchor.map_or(0.0, |(old, new)| {
+        (offset + (new as f64 - old as f64) * ROW_HEIGHT).max(0.0)
+    })
 }
 
 pub(super) enum Message {
@@ -111,10 +145,18 @@ impl TableView {
     }
 
     fn commit_resize(&mut self) {
-        self.drag = None;
+        let pin_end = self.drag.take().is_some_and(|drag| drag.pin_end);
         self.resize_timer = None;
         self.rows_timer = None;
+        self.follow_resize(pin_end);
+    }
+
+    fn follow_resize(&mut self, pin_end: bool) {
         self.row_widths = self.widths;
+        if pin_end {
+            let end = self.content_width(self.row_widths) - (self.input.viewport_width - 2.0);
+            let _ = self.list_ref.request_scroll_to(Some(end.max(0.0)), None);
+        }
     }
 
     fn rows(&self, cx: &ViewContext<Self>) -> ListView {
@@ -124,12 +166,16 @@ impl TableView {
             .automation_id("apps")
             .horizontal_scroll(true)
             .on_horizontal_offset_changed(cx.callback(Message::HorizontalOffset))
+            .on_vertical_offset_changed({
+                let scroll_y = self.scroll_y.clone();
+                move |offset| scroll_y.set(offset)
+            })
             .element_ref(&self.list_ref)
             .is_enabled(input.enabled)
             .selection_mode(ListViewSelectionMode::None)
             .item_container(ItemContainerOptions {
                 padding: Some(Thickness::uniform(0.0)),
-                min_height: Some(40.0),
+                min_height: Some(ROW_HEIGHT),
                 horizontal_content_alignment: Some(HorizontalAlignment::Stretch),
                 suppress_selection_visuals: true,
             })
@@ -288,6 +334,9 @@ impl Component for TableView {
             checkbox_focus: Rc::new(Cell::new(false)),
             restore_focus: true,
             scroll_x: 0.0,
+            scroll_y: Rc::new(Cell::new(0.0)),
+            restore: None,
+            held: None,
         }
     }
 
@@ -302,10 +351,23 @@ impl Component for TableView {
             self.commit_resize();
         }
         self.restore_focus = input.generation != self.input.generation;
+        if input.rows.is_empty() && !self.input.rows.is_empty() {
+            self.held = Some((self.input.rows.clone(), self.scroll_x, self.scroll_y.get()));
+        }
         if input.generation != self.input.generation {
             self.checkbox_focus.set(false);
-            // A new generation replaces the ListView, which starts unscrolled.
-            self.scroll_x = 0.0;
+            let (rows, horizontal, vertical) = match self.held.take() {
+                Some(held) if self.input.rows.is_empty() => held,
+                _ => (self.input.rows.clone(), self.scroll_x, self.scroll_y.get()),
+            };
+            if input.rows.is_empty() {
+                self.held = Some((rows, horizontal, vertical));
+                self.restore = None;
+            } else {
+                let vertical =
+                    anchored_offset(&rows, &input.rows, input.focused.as_deref(), vertical);
+                self.restore = Some((horizontal, vertical));
+            }
         }
         if input.generation != self.input.generation || input.focused != self.input.focused {
             self.focus_timer = None;
@@ -338,12 +400,14 @@ impl Component for TableView {
                     && event.capture_succeeded == Some(true) =>
             {
                 self.resize_timer = None;
+                let end = self.content_width(self.widths) - (self.input.viewport_width - 2.0);
                 self.drag = Some(Drag {
                     column,
                     pointer_id: event.pointer_id,
                     origin: event.window_x,
                     width: self.widths.resolved(self.content_width(self.widths))
                         [column as usize + 1],
+                    pin_end: column == COLUMNS[COLUMNS.len() - 1] && self.scroll_x >= end - 1.0,
                 });
             }
             Message::ResizeMove(event) | Message::ResizeEnd(event) => {
@@ -370,7 +434,8 @@ impl Component for TableView {
             Message::FinishResize => self.commit_resize(),
             Message::FollowResize => {
                 self.rows_timer = None;
-                self.row_widths = self.widths;
+                let pin_end = self.drag.as_ref().is_some_and(|drag| drag.pin_end);
+                self.follow_resize(pin_end);
             }
             Message::Pointer((key, column, event)) if self.input.enabled && self.drag.is_none() => {
                 self.input.on_pointer.call((key, column, event));
@@ -427,6 +492,15 @@ impl Component for TableView {
             .and_then(|key| input.rows.iter().position(|row| &row.key == key));
         let enabled = input.enabled && !self.checkbox_focus.get();
         let restore_focus = input.restore_focus && (self.restore_focus || input.keyboard_focus);
+        // The replacement ListView keeps the anchor row where it was on screen.
+        let restore = self.restore;
+        let restore_reference = self.list_ref.clone();
+        cx.use_effect("restore", generation, move || {
+            if let Some((horizontal, vertical)) = restore {
+                let _ = restore_reference.request_scroll_to(Some(horizontal), Some(vertical));
+            }
+            None
+        });
         cx.use_effect(
             "reveal",
             (generation, focused.clone(), enabled),
@@ -516,5 +590,46 @@ impl Component for TableView {
             }))
             .content(Grid::new().children(content))
             .into()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rows(keys: &[&str]) -> Vec<Rc<Row>> {
+        keys.iter()
+            .map(|key| {
+                Rc::new(Row {
+                    key: (*key).to_owned(),
+                    checked: false,
+                    checkbox_label: String::new(),
+                    cells: Default::default(),
+                    highlight: false,
+                })
+            })
+            .collect()
+    }
+
+    #[test]
+    fn anchor_keeps_focused_or_top_surviving_row_on_screen() {
+        let old = rows(&["a", "b", "c", "d", "e", "f"]);
+        // Top row "c" (index 2) is 10 DIP scrolled off; it moves to index 0.
+        let filtered = rows(&["c", "e", "f"]);
+        assert_eq!(anchored_offset(&old, &filtered, None, 90.0), 10.0);
+        // A vanished top row falls through to the next survivor, "e" (70 DIP below the
+        // top), which cannot stay that low at index 1, so the offset clamps to zero.
+        let without_c = rows(&["a", "e", "f"]);
+        assert_eq!(anchored_offset(&old, &without_c, None, 90.0), 0.0);
+        // With room above it, "e" keeps its 70 DIP: index 5 * 40 - 70.
+        let shifted = rows(&["v", "w", "x", "y", "z", "e"]);
+        assert_eq!(anchored_offset(&old, &shifted, None, 90.0), 130.0);
+        // The focused row "e" (index 4, 70 DIP below the top) keeps its screen position.
+        let reversed = rows(&["f", "e", "d", "c", "b", "a"]);
+        assert_eq!(anchored_offset(&old, &reversed, Some("e"), 90.0), 0.0);
+        assert_eq!(anchored_offset(&old, &reversed, Some("a"), 90.0), 290.0);
+        // No survivor below the top falls back to the start.
+        assert_eq!(anchored_offset(&old, &rows(&["a"]), None, 90.0), 0.0);
+        assert_eq!(anchored_offset(&old, &old, Some("zzz"), 90.0), 90.0);
     }
 }

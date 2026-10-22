@@ -164,7 +164,7 @@ impl Component for TableRow {
             .focus_on_pointer_release(true)
             .automation_id(format!("row_{}", input.row.key))
             .width(input.width)
-            .height(40.0)
+            .height(super::ROW_HEIGHT)
             .background(Color::transparent())
             .border_brush(ThemeBrush::DividerStroke)
             .border_thickness(Thickness::new(0.0, 0.0, 0.0, 1.0))
