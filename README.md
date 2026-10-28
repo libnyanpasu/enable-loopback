@@ -16,8 +16,10 @@ When the runtime is missing, the GUI offers to install it from the Microsoft Sto
 On Windows builds before Windows 11 24H1, including Windows 10, the GUI also needs
 `Microsoft.WindowsAppRuntime.Bootstrap.dll` for the process architecture beside
 `enableLoopback.exe`. It ships in the `Microsoft.WindowsAppSDK.Foundation` 2.3.12
-NuGet package under `runtimes/win-<arch>/native/`; release packaging does not include
-it yet (#8).
+NuGet package under `runtimes/win-<arch>/native/`. Each release also publishes it, with
+its pinned SHA-256 and Microsoft signature checked, as
+`Microsoft.WindowsAppRuntime.Bootstrap-<target>.dll`; rename it when placing it beside
+the executable.
 
 Build and run in Git Bash:
 
