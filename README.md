@@ -13,6 +13,12 @@ See also the [Windows App SDK downloads](https://learn.microsoft.com/windows/app
 When the runtime is missing, the GUI offers to install it from the Microsoft Store
 (where the Store is available) or opens these downloads.
 
+On Windows builds before Windows 11 24H1, including Windows 10, the GUI also needs
+`Microsoft.WindowsAppRuntime.Bootstrap.dll` for the process architecture beside
+`enableLoopback.exe`. It ships in the `Microsoft.WindowsAppSDK.Foundation` 2.3.12
+NuGet package under `runtimes/win-<arch>/native/`; release packaging does not include
+it yet (#8).
+
 Build and run in Git Bash:
 
 ```sh
