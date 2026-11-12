@@ -14,7 +14,7 @@ test = false
 [dependencies]
 rust-i18n = "4"
 nyanpasu-windows-dependencies = { git = "https://github.com/libnyanpasu/nyanpasu-windows-dependencies.git", rev = "df7fa8f4adbfe60f0d574560a228ccae3dd7b548" }
-snafu = "0.8"
+snafu = "0.9"
 sys-locale = "0.3"
 windows-reactor = { path = "../../vendor/windows-rs/crates/libs/reactor" }
 windows = { path = "../../vendor/windows-rs/crates/libs/windows", features = ["libloaderapi", "debugapi", "winuser", "shellscalingapi", "shellapi", "commctrl", "winerror", "winnt", "netfw", "sddl", "secext", "securitybaseapi", "shlwapi", "winbase", "heapapi", "winreg", "errhandlingapi", "processenv", "synchapi", "memoryapi", "handleapi", "processthreadsapi", "datetimeapi", "sysinfoapi"] }
